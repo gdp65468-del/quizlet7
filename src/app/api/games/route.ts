@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   if (!quiz) return Response.json({ error: 'Quiz not found' }, { status: 404 })
   try {
     const classLabel = typeof body.classLabel === 'string' ? body.classLabel : ''
-    return Response.json(createGame(quiz, joinOrigin(request), await getQuizSettings(), classLabel), { status: 201 })
+    return Response.json(await createGame(quiz, joinOrigin(request), await getQuizSettings(), classLabel), { status: 201 })
   } catch {
     return Response.json({ error: 'Could not create game or read quiz settings' }, { status: 500 })
   }

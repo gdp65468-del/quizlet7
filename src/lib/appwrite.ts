@@ -6,6 +6,7 @@ export const APPWRITE_CONFIG = {
   databaseId: process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'quizlet_db',
   quizzesCollectionId: process.env.NEXT_PUBLIC_APPWRITE_QUIZZES_COLLECTION_ID || 'quizzes',
   sessionsCollectionId: process.env.NEXT_PUBLIC_APPWRITE_SESSIONS_COLLECTION_ID || 'gameSessions',
+  liveRoomsCollectionId: process.env.NEXT_PUBLIC_APPWRITE_LIVE_COLLECTION_ID || 'liveRooms',
 }
 
 export const isAppwriteConfigured = APPWRITE_CONFIG.projectId.length > 0

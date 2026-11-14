@@ -30,22 +30,72 @@ export function usePollView<T extends LivePollView>(id: string, role: 'host' | '
     let active = true
     let connecting = false
     let retryTimer: ReturnType<typeof setTimeout> | undefined
+    let pollTimer: ReturnType<typeof setTimeout> | undefined
     let controller: AbortController | null = null
     let retryDelay = 1000
+    let lastEtag = ''
+    let pollingMode = false
     const isEnded = () => viewRef.current?.phase === 'ended'
 
-    const connect = async () => {
+    const pollOnce = async () => {
       if (!active || document.hidden || connecting || isEnded()) return
       connecting = true
       controller = new AbortController()
       const requestController = controller
       const headers: Record<string, string> = role === 'host' ? { 'x-host-token': hostToken } : {}
+      if (lastEtag) headers['if-none-match'] = lastEtag
+      try {
+        const res = await fetch(`/api/polls/${id}`, { headers, cache: 'no-store', signal: requestController.signal })
+        if (res.status === 304) {
+          if (active) setError('')
+          retryDelay = 1000
+          return
+        }
+        if (!res.ok) {
+          const result = await res.json().catch(() => ({}))
+          throw new Error(result.error || 'Could not find this poll')
+        }
+        const nextEtag = res.headers.get('etag')
+        if (nextEtag) lastEtag = nextEtag
+        const nextView = await res.json() as T
+        if (!active) return
+        applyView(nextView)
+        setError('')
+        retryDelay = 1000
+      } catch (cause) {
+        if (active && !document.hidden && !isEnded() &&
+            !(cause instanceof Error && cause.name === 'AbortError')) {
+          setError(cause instanceof Error ? cause.message : 'Could not connect to poll')
+        }
+      } finally {
+        controller = null
+        connecting = false
+        if (active && !document.hidden && !isEnded()) {
+          pollTimer = setTimeout(() => { void pollOnce() }, retryDelay)
+          retryDelay = Math.min(5000, Math.round(retryDelay * 1.35))
+        }
+      }
+    }
+
+    const connect = async () => {
+      if (!active || document.hidden || connecting || isEnded()) return
+      if (pollingMode) {
+        await pollOnce()
+        return
+      }
+      connecting = true
+      controller = new AbortController()
+      const requestController = controller
+      const headers: Record<string, string> = role === 'host' ? { 'x-host-token': hostToken } : {}
+      let switchedToPolling = false
       try {
         const initial = await fetch(`/api/polls/${id}`, { headers, cache: 'no-store', signal: requestController.signal })
         if (!initial.ok) {
           const result = await initial.json().catch(() => ({}))
           throw new Error(result.error || 'Could not find this poll')
         }
+        const initEtag = initial.headers.get('etag')
+        if (initEtag) lastEtag = initEtag
         const firstView = await initial.json() as T
         if (!active) return
         applyView(firstView)
@@ -57,6 +107,10 @@ export function usePollView<T extends LivePollView>(id: string, role: 'host' | '
           headers, cache: 'no-store', signal: requestController.signal,
         })
         if (!response.ok || !response.body) throw new Error('Could not connect to live poll updates')
+        if (response.headers.get('x-live-transport') === 'poll') {
+          pollingMode = true
+          switchedToPolling = true
+        }
         const reader = response.body.getReader()
         const decoder = new TextDecoder()
         let buffer = ''
@@ -78,6 +132,7 @@ export function usePollView<T extends LivePollView>(id: string, role: 'host' | '
             end = buffer.indexOf('\n\n')
           }
         }
+        if (switchedToPolling) return
         if (active && !document.hidden && !isEnded()) throw new Error('Live connection closed')
       } catch (cause) {
         if (active && !document.hidden && !isEnded() &&
@@ -89,14 +144,20 @@ export function usePollView<T extends LivePollView>(id: string, role: 'host' | '
         controller = null
         connecting = false
         if (active && !document.hidden && !isEnded()) {
-          retryTimer = setTimeout(connect, retryDelay)
-          retryDelay = Math.min(8000, retryDelay * 2)
+          if (pollingMode) {
+            retryDelay = 1000
+            pollTimer = setTimeout(() => { void pollOnce() }, 1000)
+          } else {
+            retryTimer = setTimeout(connect, retryDelay)
+            retryDelay = Math.min(8000, retryDelay * 2)
+          }
         }
       }
     }
 
     const onVisibilityChange = () => {
       clearTimeout(retryTimer)
+      clearTimeout(pollTimer)
       if (document.hidden) controller?.abort()
       else if (!connecting) void connect()
     }
@@ -105,6 +166,7 @@ export function usePollView<T extends LivePollView>(id: string, role: 'host' | '
     return () => {
       active = false
       clearTimeout(retryTimer)
+      clearTimeout(pollTimer)
       controller?.abort()
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }

@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic'
 type Context = { params: Promise<{ id: string }> }
 
 export async function GET(request: Request, { params }: Context) {
-  const game = getGame((await params).id)
+  const game = await getGame((await params).id)
   if (!game) return Response.json({ error: 'Game not found' }, { status: 404 })
   const host = isHost(game, request.headers.get('x-host-token'))
   const player = authenticatePlayer(game, request.headers.get('x-player-id'), request.headers.get('x-player-token'))
@@ -17,31 +17,31 @@ export async function GET(request: Request, { params }: Context) {
 }
 
 export async function POST(request: Request, { params }: Context) {
-  const game = getGame((await params).id)
+  const game = await getGame((await params).id)
   if (!game) return Response.json({ error: 'Game not found' }, { status: 404 })
   const body = await request.json().catch(() => null)
   try {
     if (body?.action === 'join' && typeof body.nickname === 'string') {
-      return Response.json(joinGame(game, body.nickname), { status: 201 })
+      return Response.json(await joinGame(game, body.nickname), { status: 201 })
     }
     if (body?.action === 'answer' && (typeof body.choiceId === 'string' || Array.isArray(body.choiceIds))) {
       const player = authenticatePlayer(game, request.headers.get('x-player-id'), request.headers.get('x-player-token'))
       if (!player) return Response.json({ error: 'Invalid player credentials' }, { status: 403 })
-      submitAnswer(game, player, Array.isArray(body.choiceIds) ? body.choiceIds : body.choiceId)
+      await submitAnswer(game, player, Array.isArray(body.choiceIds) ? body.choiceIds : body.choiceId)
       return Response.json({ ok: true })
     }
     if (body?.action === 'close') {
       if (!isHost(game, request.headers.get('x-host-token'))) {
         return Response.json({ error: 'Invalid host credentials' }, { status: 403 })
       }
-      closeGame(game)
+      await closeGame(game)
       return Response.json({ ok: true })
     }
     if (body?.action === 'cancel') {
       if (!isHost(game, request.headers.get('x-host-token'))) {
         return Response.json({ error: 'Invalid host credentials' }, { status: 403 })
       }
-      cancelGame(game)
+      await cancelGame(game)
       return Response.json({ ok: true })
     }
     if (typeof body?.action === 'string' && ['start', 'reveal', 'leaderboard', 'next'].includes(body.action)) {

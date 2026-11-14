@@ -1,3 +1,4 @@
+import { isAppwriteServerEnabled, isServerlessRuntime } from '@/lib/appwrite-server'
 import { authenticatePlayer, getGame, hostView, isHost, playerView, subscribeGame } from '@/lib/game-store'
 
 export const dynamic = 'force-dynamic'
@@ -6,7 +7,7 @@ export const runtime = 'nodejs'
 type Context = { params: Promise<{ id: string }> }
 
 export async function GET(request: Request, { params }: Context) {
-  const game = getGame((await params).id)
+  const game = await getGame((await params).id)
   if (!game) return Response.json({ error: 'Game not found' }, { status: 404 })
 
   const hostToken = request.headers.get('x-host-token')
@@ -19,6 +20,21 @@ export async function GET(request: Request, { params }: Context) {
   }
 
   const encoder = new TextEncoder()
+  const usePollingTransport = isAppwriteServerEnabled() || isServerlessRuntime()
+
+  if (usePollingTransport) {
+    const view = host ? hostView(game) : playerView(game, player)
+    const body = encoder.encode(`data: ${JSON.stringify(view)}\n\n`)
+    return new Response(body, {
+      headers: {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        'X-Accel-Buffering': 'no',
+        'X-Live-Transport': 'poll',
+      },
+    })
+  }
+
   let stop = () => {}
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -65,6 +81,7 @@ export async function GET(request: Request, { params }: Context) {
       'Content-Type': 'text/event-stream; charset=utf-8',
       'Cache-Control': 'no-cache, no-transform',
       'X-Accel-Buffering': 'no',
+      'X-Live-Transport': 'sse',
     },
   })
 }

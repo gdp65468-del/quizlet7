@@ -548,23 +548,29 @@ function QuizEditorInner() {
       const [, savedSlug] = String(saved.id).split('/')
       setSlug(savedSlug || targetSlug)
 
+      let cloudSynced = false
       if (user) {
-        await saveQuizToCloud({
-          category: targetCategory,
-          slug: savedSlug || targetSlug,
-          name: saved.name,
-          description: saved.description ?? '',
-          questions: saved.questions,
-        })
+        try {
+          await saveQuizToCloud({
+            category: targetCategory,
+            slug: savedSlug || targetSlug,
+            name: saved.name,
+            description: saved.description ?? '',
+            questions: saved.questions,
+          })
+          cloudSynced = true
+        } catch (cloudErr) {
+          console.warn('Client cloud sync skipped:', cloudErr)
+        }
       }
 
       await fetchQuizList()
       setNotice({
         kind: 'success',
-        text: user
+        text: cloudSynced
           ? locale === 'pt'
-            ? `Quiz "${saved.name}" salvo localmente e sincronizado na nuvem!`
-            : `Quiz "${saved.name}" saved locally and synced to cloud!`
+            ? `Quiz "${saved.name}" salvo no servidor e sincronizado no Appwrite!`
+            : `Quiz "${saved.name}" saved and synced to Appwrite!`
           : locale === 'pt'
             ? `Quiz "${saved.name}" salvo na biblioteca (${saved.id})!`
             : `Quiz "${saved.name}" saved to library (${saved.id})!`,

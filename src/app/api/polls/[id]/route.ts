@@ -7,24 +7,31 @@ export const runtime = 'nodejs'
 type Context = { params: Promise<{ id: string }> }
 
 export async function GET(request: NextRequest, { params }: Context) {
-  const poll = getPoll((await params).id)
+  const poll = await getPoll((await params).id)
   if (!poll) return NextResponse.json({ error: 'Poll not found' }, { status: 404 })
   const hostToken = request.headers.get('x-host-token')
   if (hostToken) {
     if (!isPollHost(poll, hostToken)) return NextResponse.json({ error: 'Invalid host credentials' }, { status: 403 })
-    return NextResponse.json(hostPollView(poll), { headers: { 'Cache-Control': 'no-store' } })
+    const etag = `"poll-${poll.id}-host-${poll.revision}"`
+    const headers = { 'Cache-Control': 'private, no-store', ETag: etag }
+    if (request.headers.get('if-none-match') === etag) return new NextResponse(null, { status: 304, headers })
+    return NextResponse.json(hostPollView(poll), { headers })
   }
   const visitorId = visitorIdFromCookie(request.cookies.get(POLL_VISITOR_COOKIE)?.value)
-  const response = NextResponse.json(playerPollView(poll, visitorId), { headers: { 'Cache-Control': 'no-store' } })
-  if (!visitorId) {
-    const cookie = createVisitorCookie()
-    response.cookies.set(POLL_VISITOR_COOKIE, cookie, buildCookieOptions(request, 30 * 24 * 60 * 60))
+  if (visitorId) {
+    const etag = `"poll-${poll.id}-${visitorId}-${poll.revision}"`
+    const headers = { 'Cache-Control': 'private, no-store', ETag: etag }
+    if (request.headers.get('if-none-match') === etag) return new NextResponse(null, { status: 304, headers })
+    return NextResponse.json(playerPollView(poll, visitorId), { headers })
   }
+  const response = NextResponse.json(playerPollView(poll, null), { headers: { 'Cache-Control': 'no-store' } })
+  const cookie = createVisitorCookie()
+  response.cookies.set(POLL_VISITOR_COOKIE, cookie, buildCookieOptions(request, 30 * 24 * 60 * 60))
   return response
 }
 
 export async function POST(request: NextRequest, { params }: Context) {
-  const poll = getPoll((await params).id)
+  const poll = await getPoll((await params).id)
   if (!poll) return NextResponse.json({ error: 'Poll not found' }, { status: 404 })
   const body = await request.json().catch(() => null)
   try {
@@ -32,7 +39,7 @@ export async function POST(request: NextRequest, { params }: Context) {
       const visitorId = visitorIdFromCookie(request.cookies.get(POLL_VISITOR_COOKIE)?.value)
       if (!visitorId) return NextResponse.json({ error: 'Open the poll link again to join' }, { status: 403 })
       if (typeof body.optionId !== 'string') throw new Error('Choose an option')
-      submitPollVote(poll, visitorId, body.optionId)
+      await submitPollVote(poll, visitorId, body.optionId)
       return NextResponse.json(playerPollView(poll, visitorId), { headers: { 'Cache-Control': 'no-store' } })
     }
     if (body?.action === 'end' || body?.action === 'close') {
@@ -40,10 +47,10 @@ export async function POST(request: NextRequest, { params }: Context) {
         return NextResponse.json({ error: 'Invalid host credentials' }, { status: 403 })
       }
       if (body.action === 'end') {
-        endPoll(poll)
+        await endPoll(poll)
         return NextResponse.json(hostPollView(poll))
       }
-      closePoll(poll)
+      await closePoll(poll)
       return NextResponse.json({ ok: true })
     }
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 })

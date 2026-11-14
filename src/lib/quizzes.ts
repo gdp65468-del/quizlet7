@@ -1,6 +1,16 @@
 import 'server-only'
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { APPWRITE_CONFIG } from '@/lib/appwrite'
+import {
+  deleteDoc,
+  isAppwriteServerEnabled,
+  isServerlessRuntime,
+  listDocs,
+  Query,
+  toAppwriteDocId,
+  upsertDoc,
+} from '@/lib/appwrite-server'
 import type { Question, QuestionType, QuizSet, QuizSummary } from '@/types/game'
 
 const dataDirectory = path.join(process.cwd(), 'data')
@@ -78,24 +88,32 @@ export function validateQuizPayload(raw: unknown, sourceLabel = 'quiz'): { name:
   }
 }
 
-export async function listQuizCategories(): Promise<string[]> {
-  await mkdir(dataDirectory, { recursive: true })
-  const entries = await readdir(dataDirectory, { withFileTypes: true })
-  return entries
-    .filter((entry) => entry.isDirectory() && !IGNORED_DATA_DIRS.has(entry.name))
-    .map((entry) => entry.name)
-    .sort()
+async function listBundledCategories(): Promise<string[]> {
+  try {
+    const entries = await readdir(dataDirectory, { withFileTypes: true })
+    return entries
+      .filter((entry) => entry.isDirectory() && !IGNORED_DATA_DIRS.has(entry.name))
+      .map((entry) => entry.name)
+      .sort()
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
+    return []
+  }
 }
 
-export async function loadQuizzes(): Promise<QuizSet[]> {
-  const categories = await listQuizCategories()
+async function loadBundledQuizzes(): Promise<QuizSet[]> {
+  const categories = await listBundledCategories()
   const files = (
     await Promise.all(
       categories.map(async (category) => {
-        const entries = await readdir(path.join(dataDirectory, category), { withFileTypes: true })
-        return entries
-          .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
-          .map((entry) => ({ category, name: entry.name }))
+        try {
+          const entries = await readdir(path.join(dataDirectory, category), { withFileTypes: true })
+          return entries
+            .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
+            .map((entry) => ({ category, name: entry.name }))
+        } catch {
+          return []
+        }
       }),
     )
   )
@@ -120,6 +138,103 @@ export async function loadQuizzes(): Promise<QuizSet[]> {
   )
 
   return loaded.filter((item): item is QuizSet => item !== null)
+}
+
+function tombstoneDocId(quizId: string): string {
+  return toAppwriteDocId(`del_quiz_${quizId}`)
+}
+
+async function loadAppwriteTombstones(): Promise<Set<string>> {
+  const deleted = new Set<string>()
+  if (!isAppwriteServerEnabled()) return deleted
+  try {
+    const resp = await listDocs<{ roomId?: string }>(APPWRITE_CONFIG.liveRoomsCollectionId, [
+      Query.equal('kind', ['deleted_quiz']),
+      Query.limit(200),
+    ])
+    for (const doc of resp.documents) {
+      if (typeof doc.roomId === 'string' && doc.roomId) {
+        deleted.add(doc.roomId)
+      }
+    }
+  } catch {
+    // Non-fatal if liveRooms is unavailable
+  }
+  return deleted
+}
+
+async function loadAppwriteQuizzes(): Promise<QuizSet[]> {
+  if (!isAppwriteServerEnabled()) return []
+  try {
+    const resp = await listDocs(APPWRITE_CONFIG.quizzesCollectionId, [Query.limit(200)])
+    const quizzes: QuizSet[] = []
+    for (const doc of resp.documents) {
+      const d = doc as unknown as Record<string, unknown>
+      const quizId = typeof d.quizId === 'string' && d.quizId.includes('/')
+        ? d.quizId
+        : `${slugifySegment(String(d.category || 'geral'))}/${slugifySegment(String(d.slug || d.name || doc.$id))}`
+      let rawQuestions: unknown = []
+      if (typeof d.questionsJson === 'string') {
+        try {
+          rawQuestions = JSON.parse(d.questionsJson)
+        } catch {
+          rawQuestions = []
+        }
+      } else if (Array.isArray(d.questions)) {
+        rawQuestions = d.questions
+      }
+      try {
+        const parsed = validateQuizPayload(
+          {
+            name: d.name,
+            description: d.description ?? '',
+            questions: rawQuestions,
+          },
+          `appwrite:${quizId}`,
+        )
+        quizzes.push({
+          id: quizId,
+          ...parsed,
+        })
+      } catch (err) {
+        console.warn(`Skipping invalid Appwrite quiz ${quizId}:`, err)
+      }
+    }
+    return quizzes
+  } catch (err) {
+    console.warn('Could not load quizzes from Appwrite:', err)
+    return []
+  }
+}
+
+export async function listQuizCategories(): Promise<string[]> {
+  const [quizzes, bundledCats] = await Promise.all([loadQuizzes(), listBundledCategories()])
+  const categories = new Set<string>(bundledCats)
+  for (const quiz of quizzes) {
+    const cat = quiz.id.split('/')[0]
+    if (cat && !IGNORED_DATA_DIRS.has(cat)) categories.add(cat)
+  }
+  return Array.from(categories).sort()
+}
+
+export async function loadQuizzes(): Promise<QuizSet[]> {
+  const [bundled, cloudQuizzes, deletedIds] = await Promise.all([
+    loadBundledQuizzes(),
+    loadAppwriteQuizzes(),
+    loadAppwriteTombstones(),
+  ])
+
+  const byId = new Map<string, QuizSet>()
+  for (const quiz of bundled) {
+    if (!deletedIds.has(quiz.id)) {
+      byId.set(quiz.id, quiz)
+    }
+  }
+  for (const quiz of cloudQuizzes) {
+    byId.set(quiz.id, quiz)
+  }
+
+  return Array.from(byId.values()).sort((a, b) => a.id.localeCompare(b.id))
 }
 
 export async function getQuizById(quizId: string): Promise<QuizSet | null> {
@@ -148,29 +263,84 @@ export async function saveQuizFile(input: {
     throw new Error('Reserved category name')
   }
   const slug = slugifySegment(input.slug || input.name)
+  const quizId = `${category}/${slug}`
   const validated = validateQuizPayload(
     { name: input.name, description: input.description ?? '', questions: input.questions },
-    `${category}/${slug}.json`,
+    `${quizId}.json`,
   )
 
-  const dir = path.join(dataDirectory, category)
-  await mkdir(dir, { recursive: true })
-  const fileContents = {
-    name: validated.name,
-    description: validated.description,
-    questions: validated.questions.map((q) => ({
-      type: q.type ?? 'multiple_choice',
-      body: q.body,
-      ...(q.imageUrl ? { imageUrl: q.imageUrl } : {}),
-      ...(q.codeSnippet ? { codeSnippet: q.codeSnippet } : {}),
-      ...(q.codeLanguage ? { codeLanguage: q.codeLanguage } : {}),
-      ...(q.pointsMultiplier === 2 ? { pointsMultiplier: 2 } : {}),
-      choices: q.choices.map((c) => ({ body: c.body, is_correct: c.is_correct })),
+  const sanitizedQuestions = validated.questions.slice(0, 100).map((q, idx) => ({
+    id: String(q.id ?? idx),
+    order: idx,
+    type: q.type ?? 'multiple_choice',
+    body: q.body,
+    ...(q.imageUrl ? { imageUrl: q.imageUrl } : {}),
+    ...(q.codeSnippet ? { codeSnippet: q.codeSnippet } : {}),
+    ...(q.codeLanguage ? { codeLanguage: q.codeLanguage } : {}),
+    ...(q.pointsMultiplier === 2 ? { pointsMultiplier: 2 as const } : {}),
+    choices: q.choices.map((c, cIdx) => ({
+      id: `${idx}-${cIdx}`,
+      body: c.body,
+      is_correct: c.is_correct,
     })),
+  }))
+
+  let savedToAppwrite = false
+  if (isAppwriteServerEnabled()) {
+    const docId = toAppwriteDocId(`quiz_${category}_${slug}`)
+    await upsertDoc(
+      APPWRITE_CONFIG.quizzesCollectionId,
+      docId,
+      {
+        ownerId: 'server',
+        quizId: quizId.slice(0, 128),
+        category: category.slice(0, 64),
+        slug: slug.slice(0, 64),
+        name: validated.name.slice(0, 140),
+        description: validated.description.slice(0, 500),
+        questionCount: sanitizedQuestions.length,
+        questionsJson: JSON.stringify(sanitizedQuestions).slice(0, 65535),
+        updatedAt: new Date().toISOString(),
+      },
+      ['read("users")', 'update("users")', 'delete("users")'],
+    )
+    await deleteDoc(APPWRITE_CONFIG.liveRoomsCollectionId, tombstoneDocId(quizId)).catch(() => {})
+    savedToAppwrite = true
   }
-  await writeFile(path.join(dir, `${slug}.json`), `${JSON.stringify(fileContents, null, 2)}\n`, { mode: 0o644 })
+
+  if (!isServerlessRuntime()) {
+    const dir = path.join(dataDirectory, category)
+    const fileContents = {
+      name: validated.name,
+      description: validated.description,
+      questions: sanitizedQuestions.map((q) => ({
+        type: q.type,
+        body: q.body,
+        ...(q.imageUrl ? { imageUrl: q.imageUrl } : {}),
+        ...(q.codeSnippet ? { codeSnippet: q.codeSnippet } : {}),
+        ...(q.codeLanguage ? { codeLanguage: q.codeLanguage } : {}),
+        ...(q.pointsMultiplier === 2 ? { pointsMultiplier: 2 } : {}),
+        choices: q.choices.map((c) => ({ body: c.body, is_correct: c.is_correct })),
+      })),
+    }
+    try {
+      await mkdir(dir, { recursive: true })
+      await writeFile(path.join(dir, `${slug}.json`), `${JSON.stringify(fileContents, null, 2)}\n`, { mode: 0o644 })
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (!savedToAppwrite) {
+        if (code === 'EROFS' || code === 'EACCES') {
+          throw new Error('Servidor Serverless somente leitura: configure APPWRITE_API_KEY nas variáveis de ambiente para salvar quizzes no Appwrite.')
+        }
+        throw error
+      }
+    }
+  } else if (!savedToAppwrite) {
+    throw new Error('Configure APPWRITE_API_KEY nas variáveis de ambiente da Vercel/Netlify para salvar quizzes no Appwrite.')
+  }
+
   return {
-    id: `${category}/${slug}`,
+    id: quizId,
     ...validated,
   }
 }
@@ -181,11 +351,62 @@ export async function deleteQuizFile(quizId: string): Promise<boolean> {
   const category = slugifySegment(rawCategory)
   const slug = slugifySegment(rawSlug)
   if (IGNORED_DATA_DIRS.has(category)) return false
-  try {
-    await rm(path.join(dataDirectory, category, `${slug}.json`))
-    return true
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
-    throw error
+
+  const normalizedId = `${category}/${slug}`
+  let deleted = false
+
+  if (isAppwriteServerEnabled()) {
+    const byDeterministicId = await deleteDoc(
+      APPWRITE_CONFIG.quizzesCollectionId,
+      toAppwriteDocId(`quiz_${category}_${slug}`),
+    )
+    if (byDeterministicId) deleted = true
+
+    try {
+      const matches = await listDocs(APPWRITE_CONFIG.quizzesCollectionId, [
+        Query.equal('quizId', [normalizedId]),
+        Query.limit(20),
+      ])
+      for (const doc of matches.documents) {
+        if (await deleteDoc(APPWRITE_CONFIG.quizzesCollectionId, doc.$id)) {
+          deleted = true
+        }
+      }
+    } catch {
+      // ignore query failure if index absent
+    }
   }
+
+  const localPath = path.join(dataDirectory, category, `${slug}.json`)
+  let bundledExists = false
+  try {
+    await readFile(localPath, 'utf8')
+    bundledExists = true
+  } catch {
+    bundledExists = false
+  }
+
+  if (!isServerlessRuntime() && bundledExists) {
+    try {
+      await rm(localPath)
+      deleted = true
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (code !== 'ENOENT' && code !== 'EROFS' && code !== 'EACCES') throw error
+    }
+  }
+
+  if (bundledExists && isAppwriteServerEnabled() && isServerlessRuntime()) {
+    await upsertDoc(APPWRITE_CONFIG.liveRoomsCollectionId, tombstoneDocId(normalizedId), {
+      roomId: normalizedId,
+      kind: 'deleted_quiz',
+      revision: 1,
+      expiresAt: 0,
+      payloadJson: JSON.stringify({ deletedAt: new Date().toISOString() }),
+      updatedAt: new Date().toISOString(),
+    })
+    deleted = true
+  }
+
+  return deleted
 }

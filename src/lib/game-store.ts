@@ -2,6 +2,19 @@ import 'server-only'
 import { randomBytes, randomInt, randomUUID } from 'node:crypto'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { APPWRITE_CONFIG } from '@/lib/appwrite'
+import {
+  AppwriteRestError,
+  createDoc,
+  deleteDoc,
+  getDoc,
+  isAppwriteServerEnabled,
+  isServerlessRuntime,
+  listDocs,
+  Query,
+  toAppwriteDocId,
+  upsertDoc,
+} from '@/lib/appwrite-server'
 import type { QuizSettings } from '@/lib/quiz-settings'
 import { saveSessionReport } from '@/lib/session-reports'
 import type {
@@ -19,6 +32,7 @@ import type {
 
 type Player = Participant & {
   token: string
+  joinedAt: number
   totalScore: number
   correctCount: number
   streak: number
@@ -38,8 +52,19 @@ type RawRoundScore = {
   multiplier: number
 }
 
-type GameAudience = 'host' | 'all'
-type StoredGame = {
+type PersistedAnswerRecord = Answer & {
+  questionOrder: number
+  baseScore: number
+  speedBonus: number
+  streakBonus: number
+  isCorrect: boolean
+  isPartial: boolean
+  multiplier: number
+  streak: number
+  answeredAt: number
+}
+
+type PersistedGameState = {
   id: string
   revision: number
   lastAccessedAt: number
@@ -56,14 +81,18 @@ type StoredGame = {
   saveSession: boolean
   finalResults: GameResult[] | null
   sessionReport: SessionReport | null
-  completionPromise: Promise<void> | null
   phase: GamePhase
   questionIndex: number
   questionStartedAt: number | null
   isAnswerRevealed: boolean
+}
+
+type GameAudience = 'host' | 'all'
+export type StoredGame = PersistedGameState & {
+  completionPromise: Promise<void> | null
   players: Player[]
-  answers: Answer[]
-  answersByQuestion: Map<string, Map<string, Answer>>
+  answers: PersistedAnswerRecord[]
+  answersByQuestion: Map<string, Map<string, PersistedAnswerRecord>>
   roundScoresByQuestion: Map<string, Map<string, RawRoundScore>>
   lastRoundFeedback: Map<string, PlayerRoundFeedback>
   subscribers: Set<(audience: GameAudience) => void>
@@ -77,8 +106,72 @@ const token = () => randomBytes(32).toString('hex')
 const GAME_MAX_AGE_MS = 60 * 60 * 1000
 const CLOSED_TTL_MS = 10 * 60 * 1000
 
-function isExpired(game: StoredGame, now: number) {
+function isExpired(game: Pick<PersistedGameState, 'closedAt'>, now: number) {
   return game.closedAt != null && now - game.closedAt > CLOSED_TTL_MS
+}
+
+function gameRoomDocId(gameId: string) {
+  return toAppwriteDocId(`g_${gameId}`)
+}
+
+function gamePlayerDocId(gameId: string, playerId: string) {
+  return toAppwriteDocId(`gp_${gameId}_${playerId}`)
+}
+
+function gameAnswerDocId(gameId: string, questionOrder: number, playerId: string) {
+  return toAppwriteDocId(`ga_${gameId}_${questionOrder}_${playerId}`)
+}
+
+function serializeGameState(game: StoredGame): PersistedGameState {
+  return {
+    id: game.id,
+    revision: game.revision,
+    lastAccessedAt: game.lastAccessedAt,
+    closedAt: game.closedAt,
+    expiresAt: game.expiresAt,
+    joinUrl: game.joinUrl,
+    hostToken: game.hostToken,
+    quiz: game.quiz,
+    classLabel: game.classLabel,
+    choiceRevealMs: game.choiceRevealMs,
+    answerTimeMs: game.answerTimeMs,
+    leaderboardVisibility: game.leaderboardVisibility,
+    showDistribution: game.showDistribution,
+    saveSession: game.saveSession,
+    finalResults: game.finalResults,
+    sessionReport: game.sessionReport,
+    phase: game.phase,
+    questionIndex: game.questionIndex,
+    questionStartedAt: game.questionStartedAt,
+    isAnswerRevealed: game.isAnswerRevealed,
+  }
+}
+
+async function persistGameRoom(game: StoredGame): Promise<void> {
+  if (!isAppwriteServerEnabled()) return
+  await upsertDoc(APPWRITE_CONFIG.liveRoomsCollectionId, gameRoomDocId(game.id), {
+    roomId: game.id,
+    kind: 'game',
+    revision: game.revision,
+    expiresAt: game.expiresAt,
+    payloadJson: JSON.stringify(serializeGameState(game)),
+    updatedAt: new Date().toISOString(),
+  })
+}
+
+async function deleteAllGameDocs(gameId: string): Promise<void> {
+  if (!isAppwriteServerEnabled()) return
+  try {
+    const resp = await listDocs(APPWRITE_CONFIG.liveRoomsCollectionId, [
+      Query.equal('roomId', [gameId]),
+      Query.limit(500),
+    ])
+    await Promise.all(
+      resp.documents.map((doc) => deleteDoc(APPWRITE_CONFIG.liveRoomsCollectionId, doc.$id).catch(() => false)),
+    )
+  } catch (err) {
+    console.warn(`Could not delete Appwrite docs for game ${gameId}:`, err)
+  }
 }
 
 function ensureRealtimeState(game: StoredGame) {
@@ -103,23 +196,166 @@ function clearExpiryTimer(game: StoredGame) {
   game.expiryTimer = null
 }
 
-function expireGameIfDue(game: StoredGame, now = Date.now()) {
-  if (game.closedAt !== null || now < game.expiresAt) return
+function clearRevealTimer(game: StoredGame) {
+  if (game.revealTimer) clearTimeout(game.revealTimer)
+  game.revealTimer = null
+}
+
+function sortedStandings(game: StoredGame) {
+  return [...game.players].sort(
+    (a, b) => b.totalScore - a.totalScore || b.correctCount - a.correctCount || a.nickname.localeCompare(b.nickname),
+  )
+}
+
+function snapshotPreRoundRanks(game: StoredGame, questionIdx = game.questionIndex) {
+  const sorted = sortedStandings(game)
+  sorted.forEach((player, idx) => {
+    player.previousRank = questionIdx === 0 ? null : idx + 1
+  })
+}
+
+function buildRoundFeedbackMap(game: StoredGame, questionIdx = game.questionIndex) {
+  const question = game.quiz.questions[questionIdx]
+  if (!question) return new Map<string, PlayerRoundFeedback>()
+  const qRoundScores = game.roundScoresByQuestion.get(question.id)
+  const standings = sortedStandings(game)
+  const nextFeedback = new Map<string, PlayerRoundFeedback>()
+
+  standings.forEach((player, index) => {
+    const rank = index + 1
+    const delta = player.previousRank !== null ? player.previousRank - rank : 0
+    player.rankDelta = delta
+    const raw = qRoundScores?.get(player.id)
+    const playerAbove = index > 0 ? standings[index - 1] : null
+    const playerBelow = index === 0 && standings.length > 1 ? standings[1] : null
+
+    nextFeedback.set(player.id, {
+      earnedScore: raw?.earnedScore ?? 0,
+      baseScore: raw?.baseScore ?? 0,
+      speedBonus: raw?.speedBonus ?? 0,
+      streakBonus: raw?.streakBonus ?? 0,
+      streak: raw ? raw.streak : player.streak,
+      isCorrect: raw?.isCorrect ?? false,
+      isPartial: raw?.isPartial ?? false,
+      multiplier: raw?.multiplier ?? (question.pointsMultiplier === 2 ? 2 : 1),
+      rank,
+      totalPlayers: standings.length,
+      pointsBehindNext: playerAbove ? Math.max(0, playerAbove.totalScore - player.totalScore) : null,
+      pointsAheadNext: playerBelow ? Math.max(0, player.totalScore - playerBelow.totalScore) : null,
+      rankDelta: delta,
+    })
+  })
+
+  return nextFeedback
+}
+
+function rebuildDerivedPlayerState(game: StoredGame) {
+  for (const player of game.players) {
+    player.totalScore = 0
+    player.correctCount = 0
+    player.streak = 0
+    player.bestStreak = 0
+    player.previousRank = null
+    player.rankDelta = 0
+  }
+
+  game.answersByQuestion = new Map()
+  game.roundScoresByQuestion = new Map()
+  game.lastRoundFeedback = new Map()
+
+  const answersByOrder = new Map<number, PersistedAnswerRecord[]>()
+  for (const ans of game.answers) {
+    const list = answersByOrder.get(ans.questionOrder) ?? []
+    list.push(ans)
+    answersByOrder.set(ans.questionOrder, list)
+  }
+
+  const maxQuestionIdx = Math.min(game.questionIndex, Math.max(0, game.quiz.questions.length - 1))
+  const playersById = new Map(game.players.map((p) => [p.id, p]))
+
+  for (let qIdx = 0; qIdx <= maxQuestionIdx; qIdx += 1) {
+    const question = game.quiz.questions[qIdx]
+    if (!question) continue
+
+    snapshotPreRoundRanks(game, qIdx)
+
+    const qAnswersMap = new Map<string, PersistedAnswerRecord>()
+    const qRoundScoresMap = new Map<string, RawRoundScore>()
+    const roundAnswers = answersByOrder.get(qIdx) ?? []
+
+    for (const ans of roundAnswers) {
+      const streak = ans.streak ?? 0
+      const isCorrect = Boolean(ans.isCorrect)
+      qAnswersMap.set(ans.participantId, ans)
+      qRoundScoresMap.set(ans.participantId, {
+        earnedScore: ans.score,
+        baseScore: ans.baseScore,
+        speedBonus: ans.speedBonus,
+        streakBonus: ans.streakBonus,
+        streak,
+        isCorrect,
+        isPartial: Boolean(ans.isPartial),
+        multiplier: ans.multiplier || 1,
+      })
+
+      const player = playersById.get(ans.participantId)
+      if (player) {
+        player.totalScore += ans.score
+        if (isCorrect) player.correctCount += 1
+        player.streak = streak
+        player.bestStreak = Math.max(player.bestStreak, streak)
+      }
+    }
+
+    game.answersByQuestion.set(question.id, qAnswersMap)
+    game.roundScoresByQuestion.set(question.id, qRoundScoresMap)
+
+    const roundFinished = qIdx < game.questionIndex || game.isAnswerRevealed || game.phase === 'leaderboard' || game.phase === 'result'
+    if (roundFinished) {
+      for (const player of game.players) {
+        if (!qAnswersMap.has(player.id)) {
+          player.streak = 0
+        }
+      }
+    }
+
+    if (qIdx === game.questionIndex && (game.isAnswerRevealed || game.phase === 'leaderboard')) {
+      game.lastRoundFeedback = buildRoundFeedbackMap(game, qIdx)
+    }
+  }
+}
+
+function expireGameIfDue(game: StoredGame, now = Date.now()): boolean {
+  if (game.closedAt !== null || now < game.expiresAt) return false
   clearRevealTimer(game)
   clearExpiryTimer(game)
   game.phase = 'expired'
   game.closedAt = now
   game.revision += 1
   publishGame(game, 'all')
+  return true
 }
 
 function scheduleExpiry(game: StoredGame) {
+  if (isAppwriteServerEnabled() || isServerlessRuntime()) return
   if (game.expiryTimer || game.closedAt !== null) return
   game.expiryTimer = setTimeout(() => {
     game.expiryTimer = null
     expireGameIfDue(game)
   }, Math.max(0, game.expiresAt - Date.now()))
   game.expiryTimer.unref()
+}
+
+function scheduleReveal(game: StoredGame) {
+  if (isAppwriteServerEnabled() || isServerlessRuntime()) return
+  clearRevealTimer(game)
+  const questionIndex = game.questionIndex
+  const revealAt = (game.questionStartedAt ?? Date.now()) + game.choiceRevealMs + game.answerTimeMs
+  game.revealTimer = setTimeout(() => {
+    game.revealTimer = null
+    if (game.phase === 'quiz' && game.questionIndex === questionIndex) updateTimedState(game)
+  }, Math.max(0, revealAt - Date.now()))
+  game.revealTimer.unref()
 }
 
 function shuffledQuiz(quiz: QuizSet): QuizSet {
@@ -141,7 +377,7 @@ function shuffledQuiz(quiz: QuizSet): QuizSet {
   }
 }
 
-export function createGame(quiz: QuizSet, origin: string | null, settings: QuizSettings, classLabel = '') {
+export async function createGame(quiz: QuizSet, origin: string | null, settings: QuizSettings, classLabel = '') {
   const now = Date.now()
   for (const [id, game] of games) {
     ensureRealtimeState(game)
@@ -152,15 +388,46 @@ export function createGame(quiz: QuizSet, origin: string | null, settings: QuizS
       games.delete(id)
     }
   }
+
   const firstCode = randomInt(1000, 10000)
   let id = ''
-  for (let offset = 0; offset < 9000; offset += 1) {
-    const code = String(1000 + ((firstCode - 1000 + offset) % 9000))
-    if (!games.has(code)) {
-      id = code
-      break
+
+  if (isAppwriteServerEnabled()) {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const code = String(1000 + ((firstCode - 1000 + attempt * 17) % 9000))
+      const existing = await getDoc<{ expiresAt?: number; payloadJson?: string }>(
+        APPWRITE_CONFIG.liveRoomsCollectionId,
+        gameRoomDocId(code),
+      )
+      if (!existing) {
+        id = code
+        break
+      }
+      if (typeof existing.payloadJson === 'string') {
+        try {
+          const parsed = JSON.parse(existing.payloadJson) as PersistedGameState
+          if (isExpired(parsed, now) || now > parsed.expiresAt + CLOSED_TTL_MS) {
+            await deleteAllGameDocs(code)
+            id = code
+            break
+          }
+        } catch {
+          await deleteAllGameDocs(code)
+          id = code
+          break
+        }
+      }
+    }
+  } else {
+    for (let offset = 0; offset < 9000; offset += 1) {
+      const code = String(1000 + ((firstCode - 1000 + offset) % 9000))
+      if (!games.has(code)) {
+        id = code
+        break
+      }
     }
   }
+
   if (!id) throw new Error('No game codes are available')
 
   const game: StoredGame = {
@@ -194,16 +461,96 @@ export function createGame(quiz: QuizSet, origin: string | null, settings: QuizS
     revealTimer: null,
     expiryTimer: null,
   }
-  games.set(game.id, game)
-  scheduleExpiry(game)
+
+  if (isAppwriteServerEnabled()) {
+    await persistGameRoom(game)
+  } else {
+    games.set(game.id, game)
+    scheduleExpiry(game)
+  }
+
   return { id: game.id, hostToken: game.hostToken }
 }
 
-export function getGame(id: string) {
+export async function getGame(id: string): Promise<StoredGame | undefined> {
+  const now = Date.now()
+
+  if (isAppwriteServerEnabled()) {
+    const resp = await listDocs<{ kind?: string; payloadJson?: string }>(APPWRITE_CONFIG.liveRoomsCollectionId, [
+      Query.equal('roomId', [id]),
+      Query.limit(500),
+    ])
+
+    const roomDoc = resp.documents.find((d) => d.kind === 'game')
+    if (!roomDoc || typeof roomDoc.payloadJson !== 'string') return undefined
+
+    let roomState: PersistedGameState
+    try {
+      roomState = JSON.parse(roomDoc.payloadJson) as PersistedGameState
+    } catch {
+      return undefined
+    }
+
+    const players: Player[] = []
+    const answers: PersistedAnswerRecord[] = []
+
+    for (const doc of resp.documents) {
+      if (typeof doc.payloadJson !== 'string') continue
+      try {
+        if (doc.kind === 'game_player') {
+          const p = JSON.parse(doc.payloadJson) as { id: string; token: string; nickname: string; joinedAt?: number }
+          players.push({
+            id: p.id,
+            token: p.token,
+            nickname: p.nickname,
+            joinedAt: p.joinedAt ?? 0,
+            totalScore: 0,
+            correctCount: 0,
+            streak: 0,
+            bestStreak: 0,
+            previousRank: null,
+            rankDelta: 0,
+          })
+        } else if (doc.kind === 'game_answer') {
+          answers.push(JSON.parse(doc.payloadJson) as PersistedAnswerRecord)
+        }
+      } catch {
+        // Ignore malformed child docs
+      }
+    }
+
+    players.sort((a, b) => a.joinedAt - b.joinedAt || a.id.localeCompare(b.id))
+
+    const game: StoredGame = {
+      ...roomState,
+      completionPromise: null,
+      players,
+      answers,
+      answersByQuestion: new Map(),
+      roundScoresByQuestion: new Map(),
+      lastRoundFeedback: new Map(),
+      subscribers: new Set(),
+      revealTimer: null,
+      expiryTimer: null,
+    }
+    ensureRealtimeState(game)
+    rebuildDerivedPlayerState(game)
+
+    const didExpire = expireGameIfDue(game, now)
+    if (isExpired(game, now)) {
+      await deleteAllGameDocs(id)
+      return undefined
+    }
+    const didReveal = updateTimedState(game)
+    if (didExpire || didReveal) {
+      await persistGameRoom(game)
+    }
+    return game
+  }
+
   const game = games.get(id)
   if (!game) return undefined
   ensureRealtimeState(game)
-  const now = Date.now()
   expireGameIfDue(game, now)
   if (isExpired(game, now)) {
     clearRevealTimer(game)
@@ -241,35 +588,6 @@ function publishGame(game: StoredGame, audience: GameAudience) {
   }
 }
 
-function clearRevealTimer(game: StoredGame) {
-  if (game.revealTimer) clearTimeout(game.revealTimer)
-  game.revealTimer = null
-}
-
-function scheduleReveal(game: StoredGame) {
-  clearRevealTimer(game)
-  const questionIndex = game.questionIndex
-  const revealAt = (game.questionStartedAt ?? Date.now()) + game.choiceRevealMs + game.answerTimeMs
-  game.revealTimer = setTimeout(() => {
-    game.revealTimer = null
-    if (game.phase === 'quiz' && game.questionIndex === questionIndex) updateTimedState(game)
-  }, Math.max(0, revealAt - Date.now()))
-  game.revealTimer.unref()
-}
-
-function sortedStandings(game: StoredGame) {
-  return [...game.players].sort(
-    (a, b) => b.totalScore - a.totalScore || b.correctCount - a.correctCount || a.nickname.localeCompare(b.nickname),
-  )
-}
-
-function snapshotPreRoundRanks(game: StoredGame) {
-  const sorted = sortedStandings(game)
-  sorted.forEach((player, idx) => {
-    player.previousRank = game.questionIndex === 0 ? null : idx + 1
-  })
-}
-
 function finalizeQuestionReveal(game: StoredGame) {
   if (game.isAnswerRevealed) return
   game.isAnswerRevealed = true
@@ -277,7 +595,6 @@ function finalizeQuestionReveal(game: StoredGame) {
 
   const question = game.quiz.questions[game.questionIndex]
   const qAnswers = game.answersByQuestion.get(question.id)
-  const qRoundScores = game.roundScoresByQuestion.get(question.id)
 
   for (const player of game.players) {
     if (!qAnswers?.has(player.id)) {
@@ -285,40 +602,12 @@ function finalizeQuestionReveal(game: StoredGame) {
     }
   }
 
-  const standings = sortedStandings(game)
-  const nextFeedback = new Map<string, PlayerRoundFeedback>()
-
-  standings.forEach((player, index) => {
-    const rank = index + 1
-    const delta = player.previousRank !== null ? player.previousRank - rank : 0
-    player.rankDelta = delta
-    const raw = qRoundScores?.get(player.id)
-    const playerAbove = index > 0 ? standings[index - 1] : null
-    const playerBelow = index === 0 && standings.length > 1 ? standings[1] : null
-
-    nextFeedback.set(player.id, {
-      earnedScore: raw?.earnedScore ?? 0,
-      baseScore: raw?.baseScore ?? 0,
-      speedBonus: raw?.speedBonus ?? 0,
-      streakBonus: raw?.streakBonus ?? 0,
-      streak: raw ? raw.streak : player.streak,
-      isCorrect: raw?.isCorrect ?? false,
-      isPartial: raw?.isPartial ?? false,
-      multiplier: raw?.multiplier ?? (question.pointsMultiplier === 2 ? 2 : 1),
-      rank,
-      totalPlayers: standings.length,
-      pointsBehindNext: playerAbove ? Math.max(0, playerAbove.totalScore - player.totalScore) : null,
-      pointsAheadNext: playerBelow ? Math.max(0, player.totalScore - playerBelow.totalScore) : null,
-      rankDelta: delta,
-    })
-  })
-
-  game.lastRoundFeedback = nextFeedback
+  game.lastRoundFeedback = buildRoundFeedbackMap(game, game.questionIndex)
   game.revision += 1
   publishGame(game, 'all')
 }
 
-function updateTimedState(game: StoredGame) {
+function updateTimedState(game: StoredGame): boolean {
   if (
     game.phase === 'quiz' &&
     !game.isAnswerRevealed &&
@@ -326,23 +615,28 @@ function updateTimedState(game: StoredGame) {
     Date.now() >= game.questionStartedAt + game.choiceRevealMs + game.answerTimeMs
   ) {
     finalizeQuestionReveal(game)
+    return true
   }
+  return false
 }
 
 export function isHost(game: StoredGame, hostToken: string | null) {
   return !!hostToken && hostToken === game.hostToken
 }
 
-export function closeGame(game: StoredGame) {
+export async function closeGame(game: StoredGame) {
   expireGameIfDue(game)
   if (game.phase !== 'result') throw new Error('This session has not finished yet')
   clearRevealTimer(game)
   clearExpiryTimer(game)
   game.subscribers.clear()
   games.delete(game.id)
+  if (isAppwriteServerEnabled()) {
+    await deleteAllGameDocs(game.id)
+  }
 }
 
-export function cancelGame(game: StoredGame) {
+export async function cancelGame(game: StoredGame) {
   expireGameIfDue(game)
   if (game.phase !== 'lobby' && game.phase !== 'quiz' && game.phase !== 'leaderboard') {
     throw new Error('This session has already ended')
@@ -353,9 +647,12 @@ export function cancelGame(game: StoredGame) {
   game.closedAt = Date.now()
   game.revision += 1
   publishGame(game, 'all')
+  if (isAppwriteServerEnabled()) {
+    await persistGameRoom(game)
+  }
 }
 
-export function joinGame(game: StoredGame, nickname: string) {
+export async function joinGame(game: StoredGame, nickname: string) {
   expireGameIfDue(game)
   if (game.phase !== 'lobby') {
     throw new Error(
@@ -375,6 +672,7 @@ export function joinGame(game: StoredGame, nickname: string) {
     id: randomUUID(),
     token: token(),
     nickname: name,
+    joinedAt: Date.now(),
     totalScore: 0,
     correctCount: 0,
     streak: 0,
@@ -382,9 +680,30 @@ export function joinGame(game: StoredGame, nickname: string) {
     previousRank: null,
     rankDelta: 0,
   }
-  game.players.push(player)
-  game.revision += 1
-  publishGame(game, 'host')
+
+  if (isAppwriteServerEnabled()) {
+    await createDoc(APPWRITE_CONFIG.liveRoomsCollectionId, gamePlayerDocId(game.id, player.id), {
+      roomId: game.id,
+      kind: 'game_player',
+      revision: 1,
+      expiresAt: game.expiresAt,
+      payloadJson: JSON.stringify({
+        id: player.id,
+        token: player.token,
+        nickname: player.nickname,
+        joinedAt: player.joinedAt,
+      }),
+      updatedAt: new Date().toISOString(),
+    })
+    game.players.push(player)
+    game.revision += 1
+    await persistGameRoom(game)
+  } else {
+    game.players.push(player)
+    game.revision += 1
+    publishGame(game, 'host')
+  }
+
   return { id: player.id, token: player.token, nickname: player.nickname }
 }
 
@@ -478,7 +797,7 @@ async function archiveResults(game: StoredGame): Promise<void> {
     console.warn('Could not write session JSON report:', err)
   })
 
-  if (!game.saveSession) return
+  if (!game.saveSession || isServerlessRuntime()) return
   const category = safePathSegment(game.quiz.id.split('/')[0] || 'Uncategorized')
   const directory = path.join(process.cwd(), 'data', 'sessions', category, safePathSegment(game.quiz.name))
   const completedAt = new Date()
@@ -500,15 +819,20 @@ async function archiveResults(game: StoredGame): Promise<void> {
     ...(rows.length ? [] : ['No participants joined.']),
     '',
   ].join('\n')
-  await mkdir(directory, { recursive: true })
   try {
-    await writeFile(path.join(directory, `${timestamp}.txt`), contents, { flag: 'wx', mode: 0o600 })
+    await mkdir(directory, { recursive: true })
+    try {
+      await writeFile(path.join(directory, `${timestamp}.txt`), contents, { flag: 'wx', mode: 0o600 })
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+      await writeFile(path.join(directory, `${timestamp}-${game.id}-${randomUUID().slice(0, 8)}.txt`), contents, {
+        flag: 'wx',
+        mode: 0o600,
+      })
+    }
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
-    await writeFile(path.join(directory, `${timestamp}-${game.id}-${randomUUID().slice(0, 8)}.txt`), contents, {
-      flag: 'wx',
-      mode: 0o600,
-    })
+    const code = (error as NodeJS.ErrnoException).code
+    if (code !== 'EROFS' && code !== 'EACCES') throw error
   }
 }
 
@@ -528,10 +852,12 @@ export async function hostAction(game: StoredGame, action: string) {
     game.revision += 1
     scheduleReveal(game)
     publishGame(game, 'all')
+    if (isAppwriteServerEnabled()) await persistGameRoom(game)
     return
   }
   if (action === 'reveal' && game.phase === 'quiz') {
     finalizeQuestionReveal(game)
+    if (isAppwriteServerEnabled()) await persistGameRoom(game)
     return
   }
   if (action === 'leaderboard' && game.phase === 'quiz' && game.isAnswerRevealed) {
@@ -539,6 +865,7 @@ export async function hostAction(game: StoredGame, action: string) {
       game.phase = 'leaderboard'
       game.revision += 1
       publishGame(game, 'all')
+      if (isAppwriteServerEnabled()) await persistGameRoom(game)
       return
     }
   }
@@ -567,12 +894,13 @@ export async function hostAction(game: StoredGame, action: string) {
     if (game.phase === 'quiz') scheduleReveal(game)
     else clearRevealTimer(game)
     publishGame(game, 'all')
+    if (isAppwriteServerEnabled()) await persistGameRoom(game)
     return
   }
   throw new Error('Action is unavailable in the current game phase')
 }
 
-export function submitAnswer(game: StoredGame, player: Player, rawChoiceInput: string | string[]) {
+export async function submitAnswer(game: StoredGame, player: Player, rawChoiceInput: string | string[]) {
   expireGameIfDue(game)
   updateTimedState(game)
   if (game.phase !== 'quiz' || game.isAnswerRevealed || game.questionStartedAt === null) {
@@ -635,22 +963,52 @@ export function submitAnswer(game: StoredGame, player: Player, rawChoiceInput: s
 
   player.totalScore += score
 
-  const answer: Answer = {
+  const answerRecord: PersistedAnswerRecord = {
     participantId: player.id,
     questionId: question.id,
+    questionOrder: game.questionIndex,
     choiceId: uniqueIds[0],
     choiceIds: uniqueIds,
     score,
+    baseScore,
+    speedBonus,
+    streakBonus,
     isCorrect: isFullCorrect,
+    isPartial,
+    multiplier,
     streak: player.streak,
+    answeredAt: Date.now(),
   }
-  game.answers.push(answer)
+
+  if (isAppwriteServerEnabled()) {
+    try {
+      await createDoc(
+        APPWRITE_CONFIG.liveRoomsCollectionId,
+        gameAnswerDocId(game.id, game.questionIndex, player.id),
+        {
+          roomId: game.id,
+          kind: 'game_answer',
+          revision: 1,
+          expiresAt: game.expiresAt,
+          payloadJson: JSON.stringify(answerRecord),
+          updatedAt: new Date().toISOString(),
+        },
+      )
+    } catch (err) {
+      if (err instanceof AppwriteRestError && err.status === 409) {
+        throw new Error('You already answered this question')
+      }
+      throw err
+    }
+  }
+
+  game.answers.push(answerRecord)
 
   if (!questionAnswers) {
     questionAnswers = new Map()
     game.answersByQuestion.set(question.id, questionAnswers)
   }
-  questionAnswers.set(player.id, answer)
+  questionAnswers.set(player.id, answerRecord)
 
   let qRoundScores = game.roundScoresByQuestion.get(question.id)
   if (!qRoundScores) {
@@ -673,6 +1031,38 @@ export function submitAnswer(game: StoredGame, player: Player, rawChoiceInput: s
     finalizeQuestionReveal(game)
   } else {
     publishGame(game, 'host')
+  }
+
+  if (isAppwriteServerEnabled()) {
+    // Re-check authoritative answer count in Appwrite in case two players answered at the exact same moment
+    if (!game.isAnswerRevealed) {
+      try {
+        const latest = await listDocs<{ kind?: string; payloadJson?: string }>(APPWRITE_CONFIG.liveRoomsCollectionId, [
+          Query.equal('roomId', [game.id]),
+          Query.limit(500),
+        ])
+        const playerCount = latest.documents.filter((d) => d.kind === 'game_player').length
+        const roundAnswers = latest.documents.filter((d) => {
+          if (d.kind !== 'game_answer' || typeof d.payloadJson !== 'string') return false
+          try {
+            return (JSON.parse(d.payloadJson) as PersistedAnswerRecord).questionOrder === game.questionIndex
+          } catch {
+            return false
+          }
+        }).length
+        if (playerCount > 0 && roundAnswers >= playerCount) {
+          const fresh = await getGame(game.id)
+          if (fresh && !fresh.isAnswerRevealed && fresh.phase === 'quiz') {
+            finalizeQuestionReveal(fresh)
+            await persistGameRoom(fresh)
+            return
+          }
+        }
+      } catch {
+        // Non-fatal: still persist below
+      }
+    }
+    await persistGameRoom(game)
   }
 }
 

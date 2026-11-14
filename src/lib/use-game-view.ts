@@ -44,19 +44,81 @@ export function useGameView<T extends LiveView>(
     let active = true
     let connecting = false
     let retryTimer: ReturnType<typeof setTimeout> | undefined
+    let pollTimer: ReturnType<typeof setTimeout> | undefined
     let controller: AbortController | null = null
     let retryDelay = 1000
+    let lastEtag = ''
+    let pollingMode = false
     const isFinished = () => viewRef.current?.phase === 'result' || viewRef.current?.phase === 'cancelled' || viewRef.current?.phase === 'expired'
 
-    const connect = async () => {
+    const authHeaders = (): Record<string, string> =>
+      role === 'host'
+        ? { 'x-host-token': token }
+        : token && playerId ? { 'x-player-id': playerId, 'x-player-token': token } : {}
+
+    const pollOnce = async () => {
       if (!active || document.hidden || connecting || isFinished()) return
       connecting = true
       controller = new AbortController()
       const requestController = controller
       try {
-        const headers: Record<string, string> = role === 'host'
-          ? { 'x-host-token': token }
-          : token && playerId ? { 'x-player-id': playerId, 'x-player-token': token } : {}
+        const headers = authHeaders()
+        if (lastEtag) headers['if-none-match'] = lastEtag
+        const response = await fetch(`/api/games/${id}`, {
+          headers,
+          cache: 'no-store',
+          signal: requestController.signal,
+        })
+        if (response.status === 304) {
+          if (active) setError('')
+          retryDelay = 950
+          return
+        }
+        if (!response.ok) {
+          throw new Error(
+            response.status === 404
+              ? 'Game not found. The server may have restarted.'
+              : response.status === 403
+                ? 'Room access is no longer valid.'
+                : 'Could not connect to game',
+          )
+        }
+        const nextEtag = response.headers.get('etag')
+        if (nextEtag) lastEtag = nextEtag
+        const next = (await response.json()) as T
+        if (active) {
+          applyView(next)
+          setError('')
+        }
+        retryDelay = 950
+      } catch (cause) {
+        if (active && !document.hidden && !isFinished()) {
+          if (cause instanceof Error && cause.name !== 'AbortError') {
+            setError(cause.message)
+          }
+        }
+      } finally {
+        controller = null
+        connecting = false
+        if (active && !document.hidden && !isFinished()) {
+          pollTimer = setTimeout(() => { void pollOnce() }, retryDelay)
+          retryDelay = Math.min(5000, Math.round(retryDelay * 1.35))
+        }
+      }
+    }
+
+    const connect = async () => {
+      if (!active || document.hidden || connecting || isFinished()) return
+      if (pollingMode) {
+        await pollOnce()
+        return
+      }
+      connecting = true
+      controller = new AbortController()
+      const requestController = controller
+      let switchedToPolling = false
+      try {
+        const headers = authHeaders()
         const response = await fetch(`/api/games/${id}/events`, {
           headers, cache: 'no-store', signal: requestController.signal,
         })
@@ -64,6 +126,11 @@ export function useGameView<T extends LiveView>(
           ? 'Game not found. The server may have restarted.'
           : response.status === 403 ? 'Room access is no longer valid.' : 'Could not connect to game')
         if (!response.body) throw new Error('The server did not open a live connection')
+
+        if (response.headers.get('x-live-transport') === 'poll') {
+          pollingMode = true
+          switchedToPolling = true
+        }
 
         const reader = response.body.getReader()
         const decoder = new TextDecoder()
@@ -90,6 +157,7 @@ export function useGameView<T extends LiveView>(
             end = buffer.indexOf('\n\n')
           }
         }
+        if (switchedToPolling) return
         if (active && !document.hidden) throw new Error('Live connection closed')
       } catch (cause) {
         if (active && !document.hidden && !isFinished()) {
@@ -101,22 +169,29 @@ export function useGameView<T extends LiveView>(
         controller = null
         connecting = false
         if (active && !document.hidden && !isFinished()) {
-          retryTimer = setTimeout(connect, retryDelay)
-          retryDelay = Math.min(8000, retryDelay * 2)
+          if (pollingMode) {
+            retryDelay = 950
+            pollTimer = setTimeout(() => { void pollOnce() }, 950)
+          } else {
+            retryTimer = setTimeout(connect, retryDelay)
+            retryDelay = Math.min(8000, retryDelay * 2)
+          }
         }
       }
     }
 
     const onVisibilityChange = () => {
       clearTimeout(retryTimer)
+      clearTimeout(pollTimer)
       if (document.hidden) controller?.abort()
-      else if (!connecting) connect()
+      else if (!connecting) void connect()
     }
     document.addEventListener('visibilitychange', onVisibilityChange)
-    connect()
+    void connect()
     return () => {
       active = false
       clearTimeout(retryTimer)
+      clearTimeout(pollTimer)
       controller?.abort()
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }

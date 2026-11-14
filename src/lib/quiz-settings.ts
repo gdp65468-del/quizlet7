@@ -1,7 +1,10 @@
 import 'server-only'
 import { randomUUID } from 'node:crypto'
 import { readFile, rename, rm, writeFile } from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
+import { APPWRITE_CONFIG } from '@/lib/appwrite'
+import { getDoc, isAppwriteServerEnabled, isServerlessRuntime, upsertDoc } from '@/lib/appwrite-server'
 import type { LeaderboardVisibility } from '@/types/game'
 
 export type QuizSettings = {
@@ -20,7 +23,9 @@ export const DEFAULT_QUIZ_SETTINGS: QuizSettings = {
   saveSession: false,
 }
 
+const SETTINGS_DOC_ID = 'global_quiz_settings'
 const settingsPath = path.join(process.cwd(), '.quiz-settings.json')
+const tmpSettingsPath = path.join(os.tmpdir(), 'quizlet-quiz-settings.json')
 
 export function parseQuizSettings(value: unknown): QuizSettings {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
@@ -51,24 +56,70 @@ export function parseQuizSettings(value: unknown): QuizSettings {
   }
 }
 
-export async function getQuizSettings(): Promise<QuizSettings> {
+async function readLocalSettingsFile(filePath: string): Promise<QuizSettings | null> {
   try {
-    return parseQuizSettings(JSON.parse(await readFile(settingsPath, 'utf8')))
+    return parseQuizSettings(JSON.parse(await readFile(filePath, 'utf8')))
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return DEFAULT_QUIZ_SETTINGS
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
     throw error
   }
 }
 
-export async function saveQuizSettings(value: unknown): Promise<QuizSettings> {
-  const settings = parseQuizSettings(value)
-  const temporaryPath = `${settingsPath}.${randomUUID()}.tmp`
+async function writeLocalSettingsFile(filePath: string, settings: QuizSettings): Promise<void> {
+  const temporaryPath = `${filePath}.${randomUUID()}.tmp`
   try {
     await writeFile(temporaryPath, `${JSON.stringify(settings, null, 2)}\n`, { mode: 0o600 })
-    await rename(temporaryPath, settingsPath)
+    await rename(temporaryPath, filePath)
   } catch (error) {
     await rm(temporaryPath, { force: true }).catch(() => {})
     throw error
   }
+}
+
+export async function getQuizSettings(): Promise<QuizSettings> {
+  if (isAppwriteServerEnabled()) {
+    try {
+      const doc = await getDoc<{ payloadJson?: string }>(APPWRITE_CONFIG.liveRoomsCollectionId, SETTINGS_DOC_ID)
+      if (doc && typeof doc.payloadJson === 'string') {
+        return parseQuizSettings(JSON.parse(doc.payloadJson))
+      }
+    } catch (error) {
+      console.warn('Could not read quiz settings from Appwrite:', error)
+    }
+  }
+
+  return (await readLocalSettingsFile(tmpSettingsPath)) ?? (await readLocalSettingsFile(settingsPath)) ?? DEFAULT_QUIZ_SETTINGS
+}
+
+export async function saveQuizSettings(value: unknown): Promise<QuizSettings> {
+  const settings = parseQuizSettings(value)
+
+  if (isAppwriteServerEnabled()) {
+    await upsertDoc(APPWRITE_CONFIG.liveRoomsCollectionId, SETTINGS_DOC_ID, {
+      roomId: 'SETTINGS',
+      kind: 'settings',
+      revision: 1,
+      expiresAt: 0,
+      payloadJson: JSON.stringify(settings),
+      updatedAt: new Date().toISOString(),
+    })
+  }
+
+  if (!isServerlessRuntime()) {
+    try {
+      await writeLocalSettingsFile(settingsPath, settings)
+      return settings
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (code !== 'EROFS' && code !== 'EACCES') {
+        if (!isAppwriteServerEnabled()) throw error
+      }
+    }
+  }
+
+  if (!isAppwriteServerEnabled()) {
+    await writeLocalSettingsFile(tmpSettingsPath, settings)
+  }
+
   return settings
 }

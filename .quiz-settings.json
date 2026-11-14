@@ -1,0 +1,7 @@
+{
+  "choiceRevealSeconds": 5,
+  "answerTimeSeconds": 20,
+  "leaderboardVisibility": "all",
+  "showDistribution": true,
+  "saveSession": false
+}

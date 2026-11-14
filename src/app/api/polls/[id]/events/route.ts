@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server'
+import { isAppwriteServerEnabled, isServerlessRuntime } from '@/lib/appwrite-server'
 import { getPoll, hostPollView, isPollHost, playerPollView, POLL_VISITOR_COOKIE, subscribePoll, visitorIdFromCookie } from '@/lib/poll-store'
 
 export const dynamic = 'force-dynamic'
@@ -6,7 +7,7 @@ export const runtime = 'nodejs'
 type Context = { params: Promise<{ id: string }> }
 
 export async function GET(request: NextRequest, { params }: Context) {
-  const poll = getPoll((await params).id)
+  const poll = await getPoll((await params).id)
   if (!poll) return Response.json({ error: 'Poll not found' }, { status: 404 })
   const hostToken = request.headers.get('x-host-token')
   const host = isPollHost(poll, hostToken)
@@ -15,6 +16,21 @@ export async function GET(request: NextRequest, { params }: Context) {
   if (!host && !visitorId) return Response.json({ error: 'Open the poll link again to join' }, { status: 403 })
 
   const encoder = new TextEncoder()
+  const usePollingTransport = isAppwriteServerEnabled() || isServerlessRuntime()
+
+  if (usePollingTransport) {
+    const view = host ? hostPollView(poll) : playerPollView(poll, visitorId)
+    const body = encoder.encode(`data: ${JSON.stringify(view)}\n\n`)
+    return new Response(body, {
+      headers: {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        'X-Accel-Buffering': 'no',
+        'X-Live-Transport': 'poll',
+      },
+    })
+  }
+
   let stop = () => {}
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -54,5 +70,6 @@ export async function GET(request: NextRequest, { params }: Context) {
     'Content-Type': 'text/event-stream; charset=utf-8',
     'Cache-Control': 'no-cache, no-transform',
     'X-Accel-Buffering': 'no',
+    'X-Live-Transport': 'sse',
   } })
 }
