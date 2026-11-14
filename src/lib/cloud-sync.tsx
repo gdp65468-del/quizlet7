@@ -89,14 +89,30 @@ function formatAppwriteError(err: unknown, locale: 'pt' | 'en'): string {
 
   if (err instanceof AppwriteException) {
     if (err.code === 401) {
+      if (err.type === 'user_invalid_credentials') {
+        return locale === 'pt'
+          ? 'E-mail ou senha inválidos no Appwrite.'
+          : 'Invalid Appwrite email or password.'
+      }
+      if (err.type === 'general_unauthorized_scope') {
+        return locale === 'pt'
+          ? 'Sessão não persistiu no navegador (cookies de terceiros bloqueados para cloud.appwrite.io). Permita cookies de terceiros para este site ou abra em nova aba.'
+          : 'Browser blocked third-party session cookies for cloud.appwrite.io. Allow third-party cookies or open in a new tab.'
+      }
+      if (err.type === 'user_blocked') {
+        return locale === 'pt'
+          ? 'Este usuário está bloqueado no Appwrite.'
+          : 'This user is blocked in Appwrite.'
+      }
+      const typeLabel = err.type ? ` (${err.type})` : ''
       return locale === 'pt'
-        ? 'E-mail ou senha inválidos no Appwrite.'
-        : 'Invalid Appwrite email or password.'
+        ? `Autorização recusada pelo Appwrite${typeLabel}: ${err.message}`
+        : `Appwrite authorization failed${typeLabel}: ${err.message}`
     }
     if (err.code === 409) {
       return locale === 'pt'
-        ? 'Este e-mail já está cadastrado. Tente entrar.'
-        : 'An account with this email already exists. Try signing in.'
+        ? 'Este e-mail já está cadastrado. Mude para a aba "Já tenho conta" para entrar.'
+        : 'An account with this email already exists. Switch to "Sign in".'
     }
     if (err.code === 404) {
       return locale === 'pt'
@@ -259,10 +275,25 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
           name: name.trim() || undefined,
         })
       }
-      await services.account.createEmailPasswordSession({
-        email: cleanEmail,
-        password,
-      })
+      try {
+        await services.account.createEmailPasswordSession({
+          email: cleanEmail,
+          password,
+        })
+      } catch (sessionErr) {
+        if (
+          sessionErr instanceof AppwriteException &&
+          sessionErr.type === 'user_session_already_exists'
+        ) {
+          await services.account.deleteSession({ sessionId: 'current' }).catch(() => {})
+          await services.account.createEmailPasswordSession({
+            email: cleanEmail,
+            password,
+          })
+        } else {
+          throw sessionErr
+        }
+      }
       const acc = await services.account.get()
       setUser({
         $id: acc.$id,
@@ -272,6 +303,9 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
       setPassword('')
       setModalOpen(false)
     } catch (err) {
+      if (err instanceof AppwriteException && err.code === 409 && authMode === 'register') {
+        setAuthMode('login')
+      }
       setAuthError(formatAppwriteError(err, locale))
     } finally {
       setAuthPending(false)
