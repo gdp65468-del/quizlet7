@@ -14,6 +14,7 @@ export const isAppwriteConfigured = APPWRITE_CONFIG.projectId.length > 0
 let cachedClient: Client | null = null
 let cachedAccount: Account | null = null
 let cachedDatabases: Databases | null = null
+let pingSent = false
 
 export function getAppwriteServices(): {
   client: Client
@@ -33,6 +34,16 @@ export function getAppwriteServices(): {
     account: cachedAccount!,
     databases: cachedDatabases!,
   }
+}
+
+export const client = getAppwriteServices()?.client ?? null
+
+export function pingAppwriteOnce(): void {
+  if (typeof window === 'undefined' || pingSent || !isAppwriteConfigured) return
+  const services = getAppwriteServices()
+  if (!services) return
+  pingSent = true
+  void services.client.ping().catch(() => {})
 }
 
 export function toAppwriteDocId(raw: string): string {

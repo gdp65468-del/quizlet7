@@ -7,6 +7,7 @@ import {
   APPWRITE_CONFIG,
   getAppwriteServices,
   isAppwriteConfigured,
+  pingAppwriteOnce,
   toAppwriteDocId,
 } from '@/lib/appwrite'
 import { useI18n } from '@/lib/i18n'
@@ -136,6 +137,7 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
     const services = getAppwriteServices()
     if (!services) return
 
+    pingAppwriteOnce()
     let active = true
     services.account
       .get()
