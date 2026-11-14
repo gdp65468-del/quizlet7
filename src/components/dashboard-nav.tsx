@@ -35,20 +35,20 @@ export default function DashboardNav() {
           <button
             type="button"
             onClick={openCloudAuth}
-            className="btn-ghost whitespace-nowrap px-3 py-2 text-xs font-bold text-[#a8f6df]"
+            className="inline-flex items-center gap-2 whitespace-nowrap rounded-[13px] border border-emerald-400/55 bg-emerald-500/15 px-3.5 py-2 text-xs font-extrabold text-[#a8f6df] transition hover:border-emerald-300 hover:bg-emerald-500/25"
             title={user.email || t.cloudConnected}
           >
-            <Cloud className="h-4 w-4" />
-            <span className="hidden sm:inline">{t.cloudConnected}</span>
+            <Cloud className="h-4 w-4 shrink-0" />
+            <span>{t.cloudConnected}</span>
           </button>
         ) : (
           <button
             type="button"
             onClick={openCloudAuth}
-            className="btn-ghost whitespace-nowrap px-3 py-2 text-xs font-bold text-[#a5ecf6]"
+            className="inline-flex items-center gap-2 whitespace-nowrap rounded-[13px] border border-[#f02e65]/60 bg-[#f02e65]/20 px-3.5 py-2 text-xs font-extrabold text-[#ffd3e0] transition hover:border-[#ff5b89] hover:bg-[#f02e65]/30"
           >
-            <CloudOff className="h-4 w-4" />
-            <span className="hidden sm:inline">{t.connectCloud}</span>
+            <CloudOff className="h-4 w-4 shrink-0" />
+            <span>{t.connectCloud}</span>
           </button>
         )}
         <LanguageToggle className="mx-1" />

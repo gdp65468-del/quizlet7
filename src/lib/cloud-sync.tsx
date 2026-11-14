@@ -86,10 +86,20 @@ function formatAppwriteError(err: unknown, locale: 'pt' | 'en'): string {
     }
     if (err.code === 404) {
       return locale === 'pt'
-        ? 'Banco ou coleção não encontrada no Appwrite. Verifique os IDs configurados.'
-        : 'Appwrite database or collection not found. Check your configured IDs.'
+        ? `Banco (${APPWRITE_CONFIG.databaseId}) ou coleção não encontrada no Appwrite. Verifique se já criou as coleções no painel.`
+        : `Database (${APPWRITE_CONFIG.databaseId}) or collection not found in Appwrite. Make sure collections exist in console.`
+    }
+    if (err.code === 0 || /network|cors|fetch|origin/i.test(err.message)) {
+      return locale === 'pt'
+        ? 'Conexão bloqueada pelo Appwrite (CORS). Adicione o domínio atual em Overview → Platforms → Web no painel do Appwrite.'
+        : 'Blocked by Appwrite CORS. Add this hostname under Overview → Platforms → Web in your Appwrite console.'
     }
     return err.message
+  }
+  if (err instanceof TypeError && /fetch/i.test(err.message)) {
+    return locale === 'pt'
+      ? 'Não foi possível conectar ao Appwrite. Verifique se o domínio atual está registrado em Platforms → Web no painel do Appwrite.'
+      : 'Could not reach Appwrite. Verify this hostname is registered under Platforms → Web in Appwrite console.'
   }
   return err instanceof Error ? err.message : 'Appwrite error'
 }
@@ -704,6 +714,11 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
                   <CloudOff className="h-3.5 w-3.5 hidden" />
                   {locale === 'pt' ? 'Continuar com Google (OAuth2 Appwrite)' : 'Continue with Google (Appwrite OAuth2)'}
                 </button>
+                <p className="text-muted text-center text-[11px] leading-relaxed">
+                  {locale === 'pt'
+                    ? 'Dentro do preview em iframe, prefira E-mail e Senha (OAuth2 do Google requer abrir o app em nova aba).'
+                    : 'Inside the iframe preview, prefer Email & Password (Google OAuth2 requires opening the app in a new tab).'}
+                </p>
               </div>
             )}
           </section>
