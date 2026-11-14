@@ -72,7 +72,20 @@ function ownerPermissions(uid: string) {
   ]
 }
 
+function currentHostnameHint() {
+  if (typeof window === 'undefined') return ''
+  return window.location.hostname || ''
+}
+
 function formatAppwriteError(err: unknown, locale: 'pt' | 'en'): string {
+  const host = currentHostnameHint()
+  const hostTipPt = host
+    ? ` Adicione o hostname "${host}" (sem https://) em Overview → Platforms → Add Platform → Web no painel do Appwrite.`
+    : ' Adicione o domínio atual em Overview → Platforms → Web no painel do Appwrite.'
+  const hostTipEn = host
+    ? ` Add hostname "${host}" (without https://) under Overview → Platforms → Add Platform → Web in your Appwrite console.`
+    : ' Add this hostname under Overview → Platforms → Web in your Appwrite console.'
+
   if (err instanceof AppwriteException) {
     if (err.code === 401) {
       return locale === 'pt'
@@ -91,15 +104,15 @@ function formatAppwriteError(err: unknown, locale: 'pt' | 'en'): string {
     }
     if (err.code === 0 || /network|cors|fetch|origin/i.test(err.message)) {
       return locale === 'pt'
-        ? 'Conexão bloqueada pelo Appwrite (CORS). Adicione o domínio atual em Overview → Platforms → Web no painel do Appwrite.'
-        : 'Blocked by Appwrite CORS. Add this hostname under Overview → Platforms → Web in your Appwrite console.'
+        ? `Conexão bloqueada pelo Appwrite (CORS / Origem não registrada).${hostTipPt}`
+        : `Blocked by Appwrite (CORS / Unregistered Origin).${hostTipEn}`
     }
     return err.message
   }
   if (err instanceof TypeError && /fetch/i.test(err.message)) {
     return locale === 'pt'
-      ? 'Não foi possível conectar ao Appwrite. Verifique se o domínio atual está registrado em Platforms → Web no painel do Appwrite.'
-      : 'Could not reach Appwrite. Verify this hostname is registered under Platforms → Web in Appwrite console.'
+      ? `Não foi possível conectar ao Appwrite (origem bloqueada).${hostTipPt}`
+      : `Could not reach Appwrite (blocked origin).${hostTipEn}`
   }
   return err instanceof Error ? err.message : 'Appwrite error'
 }
