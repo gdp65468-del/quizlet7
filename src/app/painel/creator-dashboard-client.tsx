@@ -7,12 +7,15 @@ import {
   BarChart3,
   BookOpen,
   Edit3,
+  Gift,
+  Play,
   PlusCircle,
   Sparkles,
   Trash2,
 } from 'lucide-react'
 import { ArrowIcon, Delay, StatPill } from '@/components/ui'
 import { useCloudSync } from '@/lib/cloud-sync'
+import { DEMO_QUIZ, DEMO_QUIZ_ID } from '@/lib/demo-quiz'
 import { useI18n } from '@/lib/i18n'
 import { MAX_QUESTIONS_PER_QUIZ, MAX_QUIZZES_PER_USER } from '@/lib/quiz-limits'
 import type { QuizSummary } from '@/types/game'
@@ -264,21 +267,106 @@ export default function CreatorDashboardClient({
             </div>
           </div>
         ) : quizzes.length === 0 ? (
-          <div className="glass p-10 text-center space-y-4">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-white/15 bg-white/5 text-[#f5cf70]">
-              <BookOpen className="h-6 w-6" aria-hidden="true" />
+          <div className="space-y-6">
+            <div className="glass p-8 text-center sm:p-10 space-y-5">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-white/15 bg-white/5 text-[#f5cf70]">
+                <BookOpen className="h-6 w-6" aria-hidden="true" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="mx-auto max-w-xl text-xl font-bold leading-snug sm:text-2xl">
+                  {isPt
+                    ? 'Você ainda não criou nenhum quiz, mas preparamos um de teste para você ver o sistema em ação!'
+                    : 'You have not created any quizzes yet, so we prepared a demo quiz for you to see the system in action!'}
+                </h3>
+                <p className="text-muted mx-auto max-w-lg text-sm leading-relaxed">
+                  {isPt
+                    ? `Crie até ${MAX_QUIZZES_PER_USER} quizzes privados com até ${MAX_QUESTIONS_PER_QUIZ} perguntas cada um ou teste agora uma sala ao vivo com nosso modelo pronto.`
+                    : `Create up to ${MAX_QUIZZES_PER_USER} private quizzes with up to ${MAX_QUESTIONS_PER_QUIZ} questions each, or test a live room right now with our built-in demo.`}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
+                <Link href="/painel/editor" className="btn-primary btn-success inline-flex whitespace-nowrap">
+                  <PlusCircle className="h-4 w-4" /> {t.createQuizBtn}
+                </Link>
+                <button
+                  type="button"
+                  disabled={starting !== null}
+                  onClick={() => void startGame(DEMO_QUIZ_ID)}
+                  className="btn-primary inline-flex whitespace-nowrap"
+                >
+                  <Play className="h-4 w-4" />{' '}
+                  {starting === DEMO_QUIZ_ID
+                    ? t.openingRoom
+                    : isPt
+                      ? 'Jogar de Teste (3 perguntas)'
+                      : 'Play Demo Quiz (3 questions)'}
+                </button>
+              </div>
             </div>
-            <h3 className="text-xl font-bold">
-              {isPt ? 'Você ainda não criou nenhum quiz' : 'You have not created any quizzes yet'}
-            </h3>
-            <p className="text-muted mx-auto max-w-lg text-sm">
-              {isPt
-                ? `Crie até ${MAX_QUIZZES_PER_USER} quizzes privados com até ${MAX_QUESTIONS_PER_QUIZ} perguntas cada um e apresente ao vivo para sua igreja, célula ou turma.`
-                : `Create up to ${MAX_QUIZZES_PER_USER} private quizzes with up to ${MAX_QUESTIONS_PER_QUIZ} questions each and host live sessions.`}
-            </p>
-            <Link href="/painel/editor" className="btn-primary btn-success inline-flex">
-              <PlusCircle className="h-4 w-4" /> {t.createQuizBtn}
-            </Link>
+
+            <article
+              className="glass glass-hover relative overflow-hidden border-[#f5cf70]/45 bg-gradient-to-br from-[#f5cf70]/12 via-white/5 to-[#5ce1e6]/10 p-6 sm:p-8"
+              aria-labelledby="demo-quiz-banner-title"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="space-y-2 max-w-2xl">
+                  <div className="flex flex-wrap items-center gap-2 text-xs font-extrabold uppercase tracking-wider">
+                    <span className="inline-flex items-center gap-1.5 rounded-lg border border-[#f5cf70]/45 bg-[#f5cf70]/15 px-2.5 py-1 text-[#fde68a]">
+                      <Gift className="h-3.5 w-3.5" aria-hidden="true" />
+                      {isPt ? 'Modelo de Demonstração / Tutorial' : 'Demo / Tutorial Template'}
+                    </span>
+                    <span className="inline-flex items-center rounded-lg border border-emerald-400/35 bg-emerald-500/15 px-2.5 py-1 text-emerald-200">
+                      {isPt
+                        ? `Não conta no limite (0/${MAX_QUIZZES_PER_USER} quizzes)`
+                        : `Does not use quota (0/${MAX_QUIZZES_PER_USER} quizzes)`}
+                    </span>
+                  </div>
+                  <h4 id="demo-quiz-banner-title" className="text-xl font-extrabold tracking-tight text-white sm:text-2xl">
+                    {isPt
+                      ? '🎁 Quiz de Demonstração (3 perguntas) — Teste como funciona!'
+                      : '🎁 Demo Quiz (3 questions) — Try how it works!'}
+                  </h4>
+                  <p className="text-muted text-sm leading-relaxed">
+                    {isPt
+                      ? 'Abra uma sala ao vivo real com QR Code, link para jogadores, cronômetro e pódio final usando 3 perguntas bíblicas prontas. Você pode testar sozinho em outra aba ou com seus alunos.'
+                      : 'Open a real live room with QR code, player link, timer, and podium using 3 ready-to-play Bible questions.'}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={starting !== null}
+                  onClick={() => void startGame(DEMO_QUIZ_ID)}
+                  className="btn-primary btn-success whitespace-nowrap shrink-0"
+                >
+                  {starting === DEMO_QUIZ_ID
+                    ? t.openingRoom
+                    : isPt
+                      ? 'Apresentar / Jogar de Teste'
+                      : 'Host / Play Demo'}
+                  <ArrowIcon />
+                </button>
+              </div>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                {DEMO_QUIZ.questions.map((question, idx) => (
+                  <div
+                    key={question.id}
+                    className="rounded-2xl border border-white/12 bg-[#091324]/55 p-4 text-left"
+                  >
+                    <p className="text-[11px] font-extrabold uppercase tracking-wider text-[#5ce1e6]">
+                      {isPt ? `Pergunta ${idx + 1}` : `Question ${idx + 1}`}
+                    </p>
+                    <p className="mt-1.5 text-sm font-bold leading-snug text-white">{question.body}</p>
+                    <p className="mt-2 text-xs text-[#c7d5e8]/80">
+                      {question.choices
+                        .map((choice, cIdx) => `${String.fromCharCode(65 + cIdx)}) ${choice.body}`)
+                        .join(' · ')}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </article>
           </div>
         ) : (
           <div className="quiz-list" aria-label={t.myQuizzes}>

@@ -1,4 +1,5 @@
 import { createGame } from '@/lib/game-store'
+import { DEMO_QUIZ, DEMO_QUIZ_ID } from '@/lib/demo-quiz'
 import { getCreatorQuizById, getQuizById } from '@/lib/quizzes'
 import { joinOrigin } from '@/lib/network'
 import { hasAdminSession } from '@/lib/admin-auth'
@@ -30,10 +31,11 @@ export async function POST(request: Request) {
   }
 
   const classLabel = typeof body.classLabel === 'string' ? body.classLabel : ''
+  const isDemoQuiz = body.quizId === DEMO_QUIZ_ID
 
   try {
     if (useAdmin) {
-      const quiz = await getQuizById(body.quizId)
+      const quiz = isDemoQuiz ? DEMO_QUIZ : await getQuizById(body.quizId)
       if (!quiz) return Response.json({ error: 'Quiz not found' }, { status: 404 })
       const settings = await getQuizSettings()
       return Response.json(await createGame(quiz, joinOrigin(request), settings, classLabel, 'server'), {
@@ -42,7 +44,7 @@ export async function POST(request: Request) {
     }
 
     const userId = creator!.session.userId
-    const quiz = await getCreatorQuizById(userId, body.quizId, creator!.jwt)
+    const quiz = isDemoQuiz ? DEMO_QUIZ : await getCreatorQuizById(userId, body.quizId, creator!.jwt)
     if (!quiz) {
       return Response.json({ error: 'Quiz não encontrado na sua conta' }, { status: 404 })
     }

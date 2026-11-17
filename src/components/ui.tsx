@@ -1,11 +1,19 @@
-import { BookOpen } from 'lucide-react'
+import Image from 'next/image'
 import type { CSSProperties, ReactNode } from 'react'
 
 export function Brand({ compact = false }: { compact?: boolean }) {
   return (
     <span className="brand-lockup">
-      <span className="brand-mark" aria-hidden="true">
-        <BookOpen strokeWidth={2.25} />
+      <span className="brand-mark">
+        <Image
+          src="/assets/aistudio/logo_b185e3dd.png"
+          alt="Arena Bíblica"
+          width={38}
+          height={38}
+          referrerPolicy="no-referrer"
+          className="h-full w-full object-cover"
+          priority
+        />
       </span>
       {!compact && <span className="brand-name">Arena <span>Bíblica</span></span>}
     </span>

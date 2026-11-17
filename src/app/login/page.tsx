@@ -1,4 +1,4 @@
-import { BookOpen } from 'lucide-react'
+import Image from 'next/image'
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import SiteFooter from '@/components/site-footer'
@@ -28,8 +28,15 @@ export default async function LoginPage() {
         </header>
         <div className="flex flex-1 items-center justify-center pb-20 pt-6">
           <section className="glass login-panel w-full max-w-md px-7 py-9 animate-in sm:px-10 sm:py-11" aria-labelledby="login-title">
-            <div className="login-icon" aria-hidden="true">
-              <BookOpen className="h-6 w-6" strokeWidth={2.25} />
+            <div className="login-icon overflow-hidden p-0">
+              <Image
+                src="/assets/aistudio/logo_b185e3dd.png"
+                alt="Arena Bíblica"
+                width={54}
+                height={54}
+                referrerPolicy="no-referrer"
+                className="h-full w-full object-cover"
+              />
             </div>
             <LoginForm />
           </section>
