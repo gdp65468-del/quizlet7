@@ -6,6 +6,7 @@ import type { CSSProperties } from 'react'
 import { useQRCode } from 'next-qrcode'
 import { Brand, Delay, StatPill } from '@/components/ui'
 import { LanguageToggle, useI18n } from '@/lib/i18n'
+import { useCloudSync } from '@/lib/cloud-sync'
 import { usePollView } from '@/lib/use-poll-view'
 import { pollColors } from '@/lib/poll-colors'
 import type { HostPollView } from '@/types/poll'
@@ -144,6 +145,7 @@ function PollChart({ view, working, onEnd, onLeave }: {
 export default function HostPoll({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const { locale, t } = useI18n()
+  const { user } = useCloudSync()
   const isPt = locale === 'pt'
   const [hostToken, setHostToken] = useState('')
   const [working, setWorking] = useState(false)
@@ -193,7 +195,7 @@ export default function HostPoll({ params }: { params: Promise<{ id: string }> }
       if (!response.ok) throw new Error(result.error || (isPt ? 'Não foi possível fechar a enquete' : 'Could not close poll'))
       if (modify) sessionStorage.setItem('poll:draft', JSON.stringify({ question: view.question, options: view.options.map((option) => option.text) }))
       localStorage.removeItem(`host:poll:${id}`)
-      window.location.assign(modify ? '/host/dashboard/polls/new' : '/host/dashboard')
+      window.location.assign(modify ? (user ? '/painel/enquete' : '/host/dashboard/polls/new') : '/')
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : (isPt ? 'Não foi possível fechar a enquete' : 'Could not close poll'))
       setWorking(false)
@@ -202,7 +204,7 @@ export default function HostPoll({ params }: { params: Promise<{ id: string }> }
 
   return <main className="app-shell"><div className="surface">
     <header className="container-game flex flex-wrap items-center justify-between gap-4 py-5 sm:py-7">
-      <Link href="/host/dashboard" aria-label={t.backToHome}><Brand /></Link>
+      <Link href="/" aria-label={t.backToHome}><Brand /></Link>
       <div className="flex flex-wrap items-center gap-2.5">
         <LanguageToggle />
         <StatPill accent="mint"><span className="live-dot" /> {isPt ? 'Enquete do host' : 'Host poll'}</StatPill>

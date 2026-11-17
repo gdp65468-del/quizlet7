@@ -1,8 +1,9 @@
 'use client'
 
+import type { CSSProperties } from 'react'
 import { useEffect } from 'react'
 import { Flame, LogOut, TrendingUp, Trophy } from 'lucide-react'
-import { ArrowIcon, Delay, StatPill } from '@/components/ui'
+import { ArrowIcon, StatPill } from '@/components/ui'
 import { useI18n } from '@/lib/i18n'
 import { soundEngine } from '@/lib/sound-engine'
 import type { HostGameView } from '@/types/game'
@@ -101,38 +102,38 @@ export default function PartialLeaderboard({
         ) : (
           <ol className="space-y-3">
             {view.partialLeaderboard.map((entry, idx) => (
-              <Delay key={entry.id} index={idx}>
-                <li
-                  className={`glass-soft leaderboard-row flex items-center gap-4 p-4 sm:p-5 ${
-                    idx === 0 ? 'leaderboard-first' : ''
-                  }`}
-                >
-                  <span className="rank-badge">{String(entry.rank).padStart(2, '0')}</span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="truncate text-lg font-extrabold text-white">{entry.nickname}</span>
-                      {entry.streak >= 2 && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/20 px-2.5 py-0.5 text-xs font-extrabold text-amber-200">
-                          <Flame className="h-3.5 w-3.5" /> {entry.streak}x
-                        </span>
-                      )}
-                      {entry.rankDelta > 0 && (
-                        <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs font-bold text-emerald-300">
-                          ▲ +{entry.rankDelta}
-                        </span>
-                      )}
-                      {entry.rankDelta < 0 && (
-                        <span className="rounded-full bg-rose-500/20 px-2 py-0.5 text-xs font-bold text-rose-300">
-                          ▼ {Math.abs(entry.rankDelta)}
-                        </span>
-                      )}
-                    </div>
+              <li
+                key={entry.id}
+                style={{ '--delay': `${Math.min(idx, 8) * 80}ms` } as CSSProperties}
+                className={`glass-soft leaderboard-row animate-in flex items-center gap-4 p-4 sm:p-5 ${
+                  idx === 0 ? 'leaderboard-first' : ''
+                }`}
+              >
+                <span className="rank-badge">{String(entry.rank).padStart(2, '0')}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="truncate text-lg font-extrabold text-white">{entry.nickname}</span>
+                    {entry.streak >= 2 && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/20 px-2.5 py-0.5 text-xs font-extrabold text-amber-200">
+                        <Flame className="h-3.5 w-3.5" /> {entry.streak}x
+                      </span>
+                    )}
+                    {entry.rankDelta > 0 && (
+                      <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs font-bold text-emerald-300">
+                        ▲ +{entry.rankDelta}
+                      </span>
+                    )}
+                    {entry.rankDelta < 0 && (
+                      <span className="rounded-full bg-rose-500/20 px-2 py-0.5 text-xs font-bold text-rose-300">
+                        ▼ {Math.abs(entry.rankDelta)}
+                      </span>
+                    )}
                   </div>
-                  <strong className="shrink-0 text-xl font-extrabold tabular-nums text-[#ffe0a6]">
-                    {entry.totalScore} <span className="text-muted text-xs font-medium">pts</span>
-                  </strong>
-                </li>
-              </Delay>
+                </div>
+                <strong className="shrink-0 text-xl font-extrabold tabular-nums text-[#ffe0a6]">
+                  {entry.totalScore} <span className="text-muted text-xs font-medium">pts</span>
+                </strong>
+              </li>
             ))}
           </ol>
         )}

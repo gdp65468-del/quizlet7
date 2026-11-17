@@ -1,19 +1,36 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { Settings } from 'lucide-react'
+import { useCloudSync } from '@/lib/cloud-sync'
 import { useI18n } from '@/lib/i18n'
 import type { LeaderboardVisibility } from '@/types/game'
 
-type Settings = { choiceRevealSeconds: string; answerTimeSeconds: string; leaderboardVisibility: LeaderboardVisibility; showDistribution: boolean; saveSession: boolean }
+type SettingsState = {
+  choiceRevealSeconds: string
+  answerTimeSeconds: string
+  leaderboardVisibility: LeaderboardVisibility
+  showDistribution: boolean
+  saveSession: boolean
+}
 
-export default function SettingsButton() {
+export default function SettingsButton({ mode = 'admin' }: { mode?: 'admin' | 'creator' }) {
   const { locale, t } = useI18n()
+  const { getJwt } = useCloudSync()
   const isPt = locale === 'pt'
+  const endpoint = mode === 'creator' ? '/api/creator/settings' : '/api/admin/settings'
+
   const dialog = useRef<HTMLDialogElement>(null)
   const body = useRef<HTMLDivElement>(null)
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [closing, setClosing] = useState(false)
-  const [settings, setSettings] = useState<Settings>({ choiceRevealSeconds: '5', answerTimeSeconds: '20', leaderboardVisibility: 'all', showDistribution: true, saveSession: false })
+  const [settings, setSettings] = useState<SettingsState>({
+    choiceRevealSeconds: '5',
+    answerTimeSeconds: '20',
+    leaderboardVisibility: 'all',
+    showDistribution: true,
+    saveSession: false,
+  })
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -59,16 +76,36 @@ export default function SettingsButton() {
     ], { duration: 420, easing: 'ease-out' })
   }
 
+  const buildHeaders = async (withJson = false): Promise<HeadersInit> => {
+    const headers: Record<string, string> = {}
+    if (withJson) headers['Content-Type'] = 'application/json'
+    if (mode === 'creator') {
+      const jwt = await getJwt()
+      if (jwt) headers['x-appwrite-jwt'] = jwt
+    }
+    return headers
+  }
+
   const open = async () => {
     dialog.current?.showModal()
     body.current?.scrollTo(0, 0)
     setError('')
     setLoading(true)
     try {
-      const response = await fetch('/api/admin/settings', { cache: 'no-store' })
+      const response = await fetch(endpoint, {
+        cache: 'no-store',
+        credentials: 'include',
+        headers: await buildHeaders(false),
+      })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || (isPt ? 'Não foi possível carregar as configurações' : 'Could not load settings'))
-      setSettings({ choiceRevealSeconds: String(result.choiceRevealSeconds), answerTimeSeconds: String(result.answerTimeSeconds), leaderboardVisibility: result.leaderboardVisibility, showDistribution: result.showDistribution ?? true, saveSession: result.saveSession ?? false })
+      setSettings({
+        choiceRevealSeconds: String(result.choiceRevealSeconds),
+        answerTimeSeconds: String(result.answerTimeSeconds),
+        leaderboardVisibility: result.leaderboardVisibility,
+        showDistribution: result.showDistribution ?? true,
+        saveSession: result.saveSession ?? false,
+      })
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : (isPt ? 'Não foi possível carregar as configurações' : 'Could not load settings'))
     } finally {
@@ -82,9 +119,10 @@ export default function SettingsButton() {
     setSaving(true)
     setError('')
     try {
-      const response = await fetch('/api/admin/settings', {
+      const response = await fetch(endpoint, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: await buildHeaders(true),
         body: JSON.stringify({
           choiceRevealSeconds: Number(settings.choiceRevealSeconds),
           answerTimeSeconds: Number(settings.answerTimeSeconds),
@@ -95,7 +133,13 @@ export default function SettingsButton() {
       })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || (isPt ? 'Não foi possível salvar as configurações' : 'Could not save settings'))
-      setSettings({ choiceRevealSeconds: String(result.choiceRevealSeconds), answerTimeSeconds: String(result.answerTimeSeconds), leaderboardVisibility: result.leaderboardVisibility, showDistribution: result.showDistribution ?? true, saveSession: result.saveSession ?? false })
+      setSettings({
+        choiceRevealSeconds: String(result.choiceRevealSeconds),
+        answerTimeSeconds: String(result.answerTimeSeconds),
+        leaderboardVisibility: result.leaderboardVisibility,
+        showDistribution: result.showDistribution ?? true,
+        saveSession: result.saveSession ?? false,
+      })
       close()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : (isPt ? 'Não foi possível salvar as configurações' : 'Could not save settings'))
@@ -107,7 +151,7 @@ export default function SettingsButton() {
 
   return <>
     <button className="btn-settings whitespace-nowrap px-4 py-2.5 text-sm" type="button" onClick={open}>
-      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.8 1.8 0 0 0 .36 2l-1.8 1.8a1.8 1.8 0 0 0-2-.36l-.66.28a1.8 1.8 0 0 0-1.1 1.66V21h-2.5v-.62a1.8 1.8 0 0 0-1.1-1.66l-.66-.28a1.8 1.8 0 0 0-2 .36l-1.8-1.8a1.8 1.8 0 0 0 .36-2l-.28-.66A1.8 1.8 0 0 0 4.56 13H4v-2h.56a1.8 1.8 0 0 0 1.66-1.1l.28-.66a1.8 1.8 0 0 0-.36-2l1.8-1.8a1.8 1.8 0 0 0 2 .36l.66-.28a1.8 1.8 0 0 0 1.1-1.66V3h2.5v.86a1.8 1.8 0 0 0 1.1 1.66l.66.28a1.8 1.8 0 0 0 2-.36l1.8 1.8a1.8 1.8 0 0 0-.36 2l.28.66A1.8 1.8 0 0 0 21.44 11H22v2h-.56a1.8 1.8 0 0 0-1.66 1.1z"/></svg>
+      <Settings aria-hidden="true" className="h-4 w-4" />
       {t.navSettings}
     </button>
     <dialog ref={dialog} className={`settings-dialog ${closing ? 'is-closing' : ''}`} aria-labelledby="settings-title"
@@ -122,8 +166,8 @@ export default function SettingsButton() {
         <div ref={body} className="settings-panel-body">
           <p className="text-muted text-sm leading-relaxed">
             {isPt
-              ? 'As alterações valem para novas salas. Salas já abertas mantêm suas configurações originais.'
-              : 'Changes apply to new rooms. Rooms already open keep their original settings.'}
+              ? 'As alterações valem apenas para suas próximas salas. Salas já abertas mantêm as configurações originais.'
+              : 'Changes apply only to your upcoming rooms. Open rooms keep their original settings.'}
           </p>
           {error && <p className="notice mt-5" role="alert">{error}</p>}
           <div className="mt-7 space-y-5">
@@ -173,8 +217,8 @@ export default function SettingsButton() {
                 <strong className="block text-sm">{isPt ? 'Salvar sessão' : 'Save session'}</strong>
                 <span className="text-muted mt-1 block text-xs">
                   {isPt
-                    ? 'Salva a classificação final do quiz concluído em data/sessions. Desativado por padrão.'
-                    : 'Save the completed quiz leaderboard in data/sessions. Off by default.'}
+                    ? 'Salva a classificação final das suas partidas concluídas no histórico privado.'
+                    : 'Save completed quiz standings to your private history.'}
                 </span>
               </span>
               <input className="settings-switch-input" type="checkbox" role="switch" checked={settings.saveSession} disabled={loading || saving} onChange={(event) => setSettings({ ...settings, saveSession: event.target.checked })} />

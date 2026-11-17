@@ -117,7 +117,7 @@ export default function DashboardClient({ quizzes, categories }: { quizzes: Quiz
     try {
       const response = await fetch('/api/games', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ quizId, classLabel: classLabel.trim() }),
+        body: JSON.stringify({ scope: 'admin', quizId, classLabel: classLabel.trim() }),
       })
       const game = await response.json()
       if (!response.ok) throw new Error(game.error)

@@ -105,7 +105,7 @@ export default function HostGame({ params }: { params: Promise<{ id: string }> }
         throw new Error(result.error || 'Could not close the session')
       }
       localStorage.removeItem(`host:${id}`)
-      window.location.assign('/host/dashboard')
+      window.location.assign('/')
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not close the session')
       setClosing(false)
@@ -127,7 +127,7 @@ export default function HostGame({ params }: { params: Promise<{ id: string }> }
         throw new Error(result.error || 'Could not cancel the quiz')
       }
       localStorage.removeItem(`host:${id}`)
-      window.location.assign('/host/dashboard')
+      window.location.assign('/')
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not cancel the quiz')
       setCancelling(false)
@@ -140,7 +140,7 @@ export default function HostGame({ params }: { params: Promise<{ id: string }> }
       <div className="surface">
         <header className="container-game flex flex-wrap items-center justify-between gap-4 py-5 sm:py-7">
           <Link
-            href="/host/dashboard"
+            href="/"
             aria-label="Back to quiz library"
             onClick={(event) => {
               if (isActivePhase) {
@@ -240,7 +240,7 @@ export default function HostGame({ params }: { params: Promise<{ id: string }> }
                 {locale === 'pt' ? 'Abra uma nova sala no painel para continuar jogando.' : 'Start a new room from Home to keep playing.'}
               </p>
               <Link
-                href="/host/dashboard"
+                href="/"
                 onClick={() => localStorage.removeItem(`host:${id}`)}
                 className="btn-primary mt-8 inline-flex"
               >

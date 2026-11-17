@@ -7,6 +7,7 @@ import {
   isAppwriteServerEnabled,
   isServerlessRuntime,
   listDocs,
+  ownerPermissions,
   Query,
   toAppwriteDocId,
   updateDoc,
@@ -74,17 +75,19 @@ async function readReportsFromDir(dir: string): Promise<SessionReport[]> {
   }
 }
 
-export async function saveSessionReport(report: SessionReport): Promise<SessionReport> {
+export async function saveSessionReport(report: SessionReport, ownerId = 'server'): Promise<SessionReport> {
   const id = safeId(report.id)
   const sanitized: SessionReport = { ...report, id }
+  const cleanOwner = ownerId.trim() || 'server'
 
   if (isAppwriteServerEnabled()) {
     const docId = toAppwriteDocId(`sess_${id}`)
+    const permissions = cleanOwner === 'server' ? [] : ownerPermissions(cleanOwner)
     await upsertDoc(
       APPWRITE_CONFIG.sessionsCollectionId,
       docId,
       {
-        ownerId: 'server',
+        ownerId: cleanOwner,
         sessionId: id.slice(0, 128),
         quizId: String(sanitized.quizId).slice(0, 128),
         quizName: String(sanitized.quizName).slice(0, 140),
@@ -98,36 +101,44 @@ export async function saveSessionReport(report: SessionReport): Promise<SessionR
         leaderboardJson: JSON.stringify(sanitized.leaderboard.slice(0, 500)).slice(0, 65535),
         questionStatsJson: JSON.stringify(sanitized.questionStats.slice(0, 100)).slice(0, 65535),
       },
-      ['read("users")', 'update("users")', 'delete("users")'],
+      permissions,
     )
   }
 
-  if (!isServerlessRuntime()) {
-    try {
-      await writeReportToDir(reportsDirectory, id, sanitized)
-      return sanitized
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code
-      if (code !== 'EROFS' && code !== 'EACCES') {
-        if (!isAppwriteServerEnabled()) throw error
+  // Only write local filesystem reports for global admin ('server') or when Appwrite isn't configured
+  if (cleanOwner === 'server' || !isAppwriteServerEnabled()) {
+    if (!isServerlessRuntime()) {
+      try {
+        await writeReportToDir(reportsDirectory, id, sanitized)
+        return sanitized
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code
+        if (code !== 'EROFS' && code !== 'EACCES') {
+          if (!isAppwriteServerEnabled()) throw error
+        }
       }
     }
-  }
 
-  if (!isAppwriteServerEnabled()) {
-    await writeReportToDir(tmpReportsDirectory, id, sanitized).catch(() => {})
+    if (!isAppwriteServerEnabled()) {
+      await writeReportToDir(tmpReportsDirectory, id, sanitized).catch(() => {})
+    }
   }
 
   return sanitized
 }
 
-export async function listSessionReports(): Promise<SessionReport[]> {
+export async function listSessionReports(ownerId = 'server'): Promise<SessionReport[]> {
   const byId = new Map<string, SessionReport>()
+  const cleanOwner = ownerId.trim() || 'server'
 
   if (isAppwriteServerEnabled()) {
     try {
-      const resp = await listDocs(APPWRITE_CONFIG.sessionsCollectionId, [Query.limit(100)])
+      const resp = await listDocs(APPWRITE_CONFIG.sessionsCollectionId, [
+        Query.equal('ownerId', [cleanOwner]),
+        Query.limit(100),
+      ])
       for (const doc of resp.documents) {
+        if (doc.ownerId !== cleanOwner) continue
         const report = reportFromAppwriteDoc(doc)
         byId.set(report.id, report)
       }
@@ -136,15 +147,17 @@ export async function listSessionReports(): Promise<SessionReport[]> {
     }
   }
 
-  const localLists = await Promise.all([
-    readReportsFromDir(reportsDirectory),
-    readReportsFromDir(tmpReportsDirectory),
-  ])
+  if (cleanOwner === 'server') {
+    const localLists = await Promise.all([
+      readReportsFromDir(reportsDirectory),
+      readReportsFromDir(tmpReportsDirectory),
+    ])
 
-  for (const list of localLists) {
-    for (const report of list) {
-      if (!byId.has(report.id)) {
-        byId.set(report.id, report)
+    for (const list of localLists) {
+      for (const report of list) {
+        if (!byId.has(report.id)) {
+          byId.set(report.id, report)
+        }
       }
     }
   }
@@ -152,33 +165,30 @@ export async function listSessionReports(): Promise<SessionReport[]> {
   return Array.from(byId.values()).sort((a, b) => b.completedAt.localeCompare(a.completedAt))
 }
 
-export async function updateSessionClassLabel(id: string, classLabel: string): Promise<SessionReport | null> {
+export async function updateSessionClassLabel(
+  id: string,
+  classLabel: string,
+  ownerId = 'server',
+): Promise<SessionReport | null> {
   const cleanId = safeId(id)
   const cleanLabel = classLabel.trim().slice(0, 80)
+  const cleanOwner = ownerId.trim() || 'server'
   let updatedReport: SessionReport | null = null
 
   if (isAppwriteServerEnabled()) {
     try {
       const matches = await listDocs(APPWRITE_CONFIG.sessionsCollectionId, [
         Query.equal('sessionId', [cleanId]),
+        Query.equal('ownerId', [cleanOwner]),
         Query.limit(10),
       ])
       if (matches.documents.length > 0) {
         for (const doc of matches.documents) {
+          if (doc.ownerId !== cleanOwner) continue
           const updatedDoc = await updateDoc(APPWRITE_CONFIG.sessionsCollectionId, doc.$id, {
             classLabel: cleanLabel,
           })
           updatedReport = reportFromAppwriteDoc(updatedDoc)
-        }
-      } else {
-        const fallbackDocId = toAppwriteDocId(`sess_${cleanId}`)
-        try {
-          const updatedDoc = await updateDoc(APPWRITE_CONFIG.sessionsCollectionId, fallbackDocId, {
-            classLabel: cleanLabel,
-          })
-          updatedReport = reportFromAppwriteDoc(updatedDoc)
-        } catch {
-          // Document may only exist locally
         }
       }
     } catch (error) {
@@ -186,15 +196,17 @@ export async function updateSessionClassLabel(id: string, classLabel: string): P
     }
   }
 
-  for (const dir of [reportsDirectory, tmpReportsDirectory]) {
-    const file = path.join(dir, `${cleanId}.json`)
-    try {
-      const existing = JSON.parse(await readFile(file, 'utf8')) as SessionReport
-      const updated: SessionReport = { ...existing, classLabel: cleanLabel }
-      await writeFile(file, `${JSON.stringify(updated, null, 2)}\n`, { mode: 0o600 }).catch(() => {})
-      updatedReport ??= updated
-    } catch {
-      // Ignore missing or read-only local files
+  if (cleanOwner === 'server') {
+    for (const dir of [reportsDirectory, tmpReportsDirectory]) {
+      const file = path.join(dir, `${cleanId}.json`)
+      try {
+        const existing = JSON.parse(await readFile(file, 'utf8')) as SessionReport
+        const updated: SessionReport = { ...existing, classLabel: cleanLabel }
+        await writeFile(file, `${JSON.stringify(updated, null, 2)}\n`, { mode: 0o600 }).catch(() => {})
+        updatedReport ??= updated
+      } catch {
+        // Ignore missing or read-only local files
+      }
     }
   }
 

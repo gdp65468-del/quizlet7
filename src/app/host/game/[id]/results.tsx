@@ -1,9 +1,10 @@
 'use client'
 
+import type { CSSProperties } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import confetti from 'canvas-confetti'
 import { Cloud, Download, Eye, FileText, Flame, RotateCcw, TrendingUp, Trophy } from 'lucide-react'
-import { Delay, StatPill } from '@/components/ui'
+import { StatPill } from '@/components/ui'
 import { useCloudSync } from '@/lib/cloud-sync'
 import { exportReportCsv, exportReportPdf } from '@/lib/export-reports'
 import { useI18n } from '@/lib/i18n'
@@ -367,32 +368,32 @@ export default function Results({
           {view.results.length ? (
             <ol className="space-y-3">
               {view.results.map((result, index) => (
-                <Delay key={result.id} index={index}>
-                  <li
-                    className={`glass-soft leaderboard-row flex items-center gap-4 p-4 sm:p-5 ${
-                      index === 0 ? 'leaderboard-first' : ''
-                    }`}
-                  >
-                    <span className="rank-badge">{String(index + 1).padStart(2, '0')}</span>
-                    <div className="min-w-0 flex-1">
-                      <span className="block truncate text-base font-bold sm:text-lg">{result.nickname}</span>
-                      {result.bestStreak >= 2 && (
-                        <span className="text-xs font-bold text-amber-200">
-                          🔥 {t.streakLabel(result.bestStreak)}
-                        </span>
-                      )}
-                    </div>
-                    <span className="flex shrink-0 flex-wrap items-baseline justify-end gap-x-4 gap-y-1 text-right">
-                      <span className="text-sm font-semibold text-[#a5ecf6]">
-                        {result.correctCount}/{view.questionCount}{' '}
-                        {locale === 'pt' ? 'acertos' : 'correct'}
+                <li
+                  key={result.id}
+                  style={{ '--delay': `${Math.min(index, 8) * 80}ms` } as CSSProperties}
+                  className={`glass-soft leaderboard-row animate-in flex items-center gap-4 p-4 sm:p-5 ${
+                    index === 0 ? 'leaderboard-first' : ''
+                  }`}
+                >
+                  <span className="rank-badge">{String(index + 1).padStart(2, '0')}</span>
+                  <div className="min-w-0 flex-1">
+                    <span className="block truncate text-base font-bold sm:text-lg">{result.nickname}</span>
+                    {result.bestStreak >= 2 && (
+                      <span className="text-xs font-bold text-amber-200">
+                        🔥 {t.streakLabel(result.bestStreak)}
                       </span>
-                      <strong className="font-extrabold tabular-nums text-[#cbbdff]">
-                        {result.totalScore} <span className="text-muted text-xs font-medium">pts</span>
-                      </strong>
+                    )}
+                  </div>
+                  <span className="flex shrink-0 flex-wrap items-baseline justify-end gap-x-4 gap-y-1 text-right">
+                    <span className="text-sm font-semibold text-[#a5ecf6]">
+                      {result.correctCount}/{view.questionCount}{' '}
+                      {locale === 'pt' ? 'acertos' : 'correct'}
                     </span>
-                  </li>
-                </Delay>
+                    <strong className="font-extrabold tabular-nums text-[#cbbdff]">
+                      {result.totalScore} <span className="text-muted text-xs font-medium">pts</span>
+                    </strong>
+                  </span>
+                </li>
               ))}
             </ol>
           ) : (

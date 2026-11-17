@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { readFile, rename, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { APPWRITE_CONFIG } from '@/lib/appwrite'
+import { APPWRITE_CONFIG, toAppwriteDocId } from '@/lib/appwrite'
 import { getDoc, isAppwriteServerEnabled, isServerlessRuntime, upsertDoc } from '@/lib/appwrite-server'
 import type { LeaderboardVisibility } from '@/types/game'
 
@@ -123,3 +123,46 @@ export async function saveQuizSettings(value: unknown): Promise<QuizSettings> {
 
   return settings
 }
+
+function creatorSettingsDocId(userId: string): string {
+  return toAppwriteDocId(`settings_${userId}`)
+}
+
+function creatorLocalSettingsPath(userId: string): string {
+  return path.join(os.tmpdir(), `quizlet-creator-settings-${creatorSettingsDocId(userId)}.json`)
+}
+
+export async function getCreatorQuizSettings(userId: string): Promise<QuizSettings> {
+  if (isAppwriteServerEnabled()) {
+    try {
+      const doc = await getDoc<{ payloadJson?: string }>(
+        APPWRITE_CONFIG.liveRoomsCollectionId,
+        creatorSettingsDocId(userId),
+      )
+      if (doc && typeof doc.payloadJson === 'string') {
+        return parseQuizSettings(JSON.parse(doc.payloadJson))
+      }
+    } catch (error) {
+      console.warn('Could not read creator quiz settings from Appwrite:', error)
+    }
+  }
+  return (await readLocalSettingsFile(creatorLocalSettingsPath(userId))) ?? { ...DEFAULT_QUIZ_SETTINGS }
+}
+
+export async function saveCreatorQuizSettings(userId: string, value: unknown): Promise<QuizSettings> {
+  const settings = parseQuizSettings(value)
+  if (isAppwriteServerEnabled()) {
+    await upsertDoc(APPWRITE_CONFIG.liveRoomsCollectionId, creatorSettingsDocId(userId), {
+      roomId: `SETTINGS_${userId}`.slice(0, 128),
+      kind: 'settings',
+      revision: 1,
+      expiresAt: 0,
+      payloadJson: JSON.stringify(settings),
+      updatedAt: new Date().toISOString(),
+    })
+    return settings
+  }
+  await writeLocalSettingsFile(creatorLocalSettingsPath(userId), settings)
+  return settings
+}
+

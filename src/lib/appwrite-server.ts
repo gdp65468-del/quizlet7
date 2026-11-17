@@ -1,8 +1,16 @@
 import 'server-only'
-import { Query } from 'appwrite'
+import { Permission, Query, Role } from 'appwrite'
 import { APPWRITE_CONFIG, toAppwriteDocId } from '@/lib/appwrite'
 
 export { Query, toAppwriteDocId }
+
+export function ownerPermissions(userId: string): string[] {
+  return [
+    Permission.read(Role.user(userId)),
+    Permission.update(Role.user(userId)),
+    Permission.delete(Role.user(userId)),
+  ]
+}
 
 export class AppwriteRestError extends Error {
   status: number
@@ -40,7 +48,8 @@ export function isServerlessRuntime(): boolean {
   )
 }
 
-export async function appwriteRequest<T>(
+async function rawAppwriteFetch<T>(
+  authHeaders: Record<string, string>,
   method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
   apiPath: string,
   options?: {
@@ -48,11 +57,6 @@ export async function appwriteRequest<T>(
     body?: Record<string, unknown>
   },
 ): Promise<T> {
-  const key = serverApiKey()
-  if (!APPWRITE_CONFIG.projectId || !key) {
-    throw new Error('APPWRITE_API_KEY is not configured')
-  }
-
   const base = APPWRITE_CONFIG.endpoint.replace(/\/+$/, '')
   const url = new URL(`${base}${apiPath}`)
   if (options?.queries?.length) {
@@ -66,7 +70,7 @@ export async function appwriteRequest<T>(
     cache: 'no-store',
     headers: {
       'X-Appwrite-Project': APPWRITE_CONFIG.projectId,
-      'X-Appwrite-Key': key,
+      ...authHeaders,
       Accept: 'application/json',
       ...(options?.body ? { 'Content-Type': 'application/json' } : {}),
     },
@@ -96,6 +100,37 @@ export async function appwriteRequest<T>(
   }
 
   return parsed as T
+}
+
+export async function appwriteRequest<T>(
+  method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
+  apiPath: string,
+  options?: {
+    queries?: string[]
+    body?: Record<string, unknown>
+  },
+): Promise<T> {
+  const key = serverApiKey()
+  if (!APPWRITE_CONFIG.projectId || !key) {
+    throw new Error('APPWRITE_API_KEY is not configured')
+  }
+  return rawAppwriteFetch<T>({ 'X-Appwrite-Key': key }, method, apiPath, options)
+}
+
+export async function appwriteJwtRequest<T>(
+  jwt: string,
+  method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
+  apiPath: string,
+  options?: {
+    queries?: string[]
+    body?: Record<string, unknown>
+  },
+): Promise<T> {
+  const cleanJwt = jwt.trim()
+  if (!APPWRITE_CONFIG.projectId || !cleanJwt) {
+    throw new Error('Appwrite user JWT is missing')
+  }
+  return rawAppwriteFetch<T>({ 'X-Appwrite-JWT': cleanJwt }, method, apiPath, options)
 }
 
 const globalSchema = globalThis as typeof globalThis & {

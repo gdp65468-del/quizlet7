@@ -66,6 +66,7 @@ type PersistedAnswerRecord = Answer & {
 
 type PersistedGameState = {
   id: string
+  ownerId?: string
   revision: number
   lastAccessedAt: number
   closedAt: number | null
@@ -125,6 +126,7 @@ function gameAnswerDocId(gameId: string, questionOrder: number, playerId: string
 function serializeGameState(game: StoredGame): PersistedGameState {
   return {
     id: game.id,
+    ownerId: game.ownerId || 'server',
     revision: game.revision,
     lastAccessedAt: game.lastAccessedAt,
     closedAt: game.closedAt,
@@ -377,7 +379,13 @@ function shuffledQuiz(quiz: QuizSet): QuizSet {
   }
 }
 
-export async function createGame(quiz: QuizSet, origin: string | null, settings: QuizSettings, classLabel = '') {
+export async function createGame(
+  quiz: QuizSet,
+  origin: string | null,
+  settings: QuizSettings,
+  classLabel = '',
+  ownerId = 'server',
+) {
   if (isServerlessRuntime() && !isAppwriteServerEnabled()) {
     throw new Error(
       'Configuração pendente no servidor: adicione APPWRITE_API_KEY nas variáveis de ambiente da Vercel/Netlify e faça um Redeploy para criar salas ao vivo.',
@@ -437,6 +445,7 @@ export async function createGame(quiz: QuizSet, origin: string | null, settings:
 
   const game: StoredGame = {
     id,
+    ownerId: ownerId.trim() || 'server',
     revision: 1,
     lastAccessedAt: now,
     closedAt: null,
@@ -798,11 +807,12 @@ function singleLine(value: string): string {
 
 async function archiveResults(game: StoredGame): Promise<void> {
   const report = (game.sessionReport ??= buildSessionReport(game))
-  await saveSessionReport(report).catch((err) => {
+  const reportOwner = game.ownerId || 'server'
+  await saveSessionReport(report, reportOwner).catch((err) => {
     console.warn('Could not write session JSON report:', err)
   })
 
-  if (!game.saveSession || isServerlessRuntime()) return
+  if (reportOwner !== 'server' || !game.saveSession || isServerlessRuntime()) return
   const category = safePathSegment(game.quiz.id.split('/')[0] || 'Uncategorized')
   const directory = path.join(process.cwd(), 'data', 'sessions', category, safePathSegment(game.quiz.name))
   const completedAt = new Date()
