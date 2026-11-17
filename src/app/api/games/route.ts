@@ -15,7 +15,10 @@ export async function POST(request: Request) {
   try {
     const classLabel = typeof body.classLabel === 'string' ? body.classLabel : ''
     return Response.json(await createGame(quiz, joinOrigin(request), await getQuizSettings(), classLabel), { status: 201 })
-  } catch {
-    return Response.json({ error: 'Could not create game or read quiz settings' }, { status: 500 })
+  } catch (error) {
+    return Response.json(
+      { error: error instanceof Error ? error.message : 'Could not create game or read quiz settings' },
+      { status: 500 },
+    )
   }
 }

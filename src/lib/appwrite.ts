@@ -1,8 +1,16 @@
 import { Account, Client, Databases } from 'appwrite'
 
+const rawProjectId = (process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || '6af7acd10026311722ef').trim()
+const rawEndpoint = (process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT || 'https://nyc.cloud.appwrite.io/v1')
+  .trim()
+  .replace(/\/+$/, '')
+
 export const APPWRITE_CONFIG = {
-  endpoint: process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT || 'https://nyc.cloud.appwrite.io/v1',
-  projectId: (process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || '6af7acd10026311722ef').trim(),
+  endpoint:
+    rawProjectId === '6af7acd10026311722ef' && rawEndpoint === 'https://cloud.appwrite.io/v1'
+      ? 'https://nyc.cloud.appwrite.io/v1'
+      : rawEndpoint,
+  projectId: rawProjectId,
   databaseId: process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'quizlet_db',
   quizzesCollectionId: process.env.NEXT_PUBLIC_APPWRITE_QUIZZES_COLLECTION_ID || 'quizzes',
   sessionsCollectionId: process.env.NEXT_PUBLIC_APPWRITE_SESSIONS_COLLECTION_ID || 'gameSessions',

@@ -378,6 +378,11 @@ function shuffledQuiz(quiz: QuizSet): QuizSet {
 }
 
 export async function createGame(quiz: QuizSet, origin: string | null, settings: QuizSettings, classLabel = '') {
+  if (isServerlessRuntime() && !isAppwriteServerEnabled()) {
+    throw new Error(
+      'Configuração pendente no servidor: adicione APPWRITE_API_KEY nas variáveis de ambiente da Vercel/Netlify e faça um Redeploy para criar salas ao vivo.',
+    )
+  }
   const now = Date.now()
   for (const [id, game] of games) {
     ensureRealtimeState(game)

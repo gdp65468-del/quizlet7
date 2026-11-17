@@ -156,6 +156,11 @@ export function visitorIdFromCookie(value: string | undefined): string | null {
 }
 
 export async function createPoll(input: unknown, origin: string | null) {
+  if (isServerlessRuntime() && !isAppwriteServerEnabled()) {
+    throw new Error(
+      'Configuração pendente no servidor: adicione APPWRITE_API_KEY nas variáveis de ambiente da Vercel/Netlify e faça um Redeploy para criar enquetes ao vivo.',
+    )
+  }
   if (typeof input !== 'object' || input === null || Array.isArray(input)) throw new Error('Poll details are required')
   const { question, type, options } = input as Record<string, unknown>
   if (typeof question !== 'string' || !question.trim() || question.trim().length > 500) {

@@ -32,9 +32,11 @@ export function isAppwriteServerEnabled(): boolean {
 export function isServerlessRuntime(): boolean {
   return Boolean(
     process.env.VERCEL ||
+      process.env.VERCEL_ENV ||
       process.env.NETLIFY ||
+      process.env.DEPLOY_URL ||
       process.env.AWS_LAMBDA_FUNCTION_NAME ||
-      process.env.VERCEL_ENV,
+      process.env.LAMBDA_TASK_ROOT,
   )
 }
 
