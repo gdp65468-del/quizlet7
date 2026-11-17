@@ -1,0 +1,55 @@
+{
+  "name": "Panorama Bíblico",
+  "description": "Explore a estrutura, os livros e os escritores das Sagradas Escrituras.",
+  "questions": [
+    {
+      "type": "multiple_choice",
+      "body": "Qual é o primeiro livro da Bíblia?",
+      "choices": [
+        { "body": "Gênesis", "is_correct": true },
+        { "body": "Êxodo", "is_correct": false },
+        { "body": "Salmos", "is_correct": false },
+        { "body": "Mateus", "is_correct": false }
+      ]
+    },
+    {
+      "type": "multiple_choice",
+      "body": "Qual livro do Antigo Testamento reúne 150 cânticos, orações e louvores?",
+      "choices": [
+        { "body": "Salmos", "is_correct": true },
+        { "body": "Provérbios", "is_correct": false },
+        { "body": "Eclesiastes", "is_correct": false },
+        { "body": "Lamentações", "is_correct": false }
+      ]
+    },
+    {
+      "type": "true_false",
+      "body": "Verdadeiro ou Falso: Os quatro Evangelhos do Novo Testamento são Mateus, Marcos, Lucas e João.",
+      "choices": [
+        { "body": "Verdadeiro", "is_correct": true },
+        { "body": "Falso", "is_correct": false }
+      ]
+    },
+    {
+      "type": "multiple_choice",
+      "body": "Qual livro do Novo Testamento narra a história da igreja primitiva após a ascensão de Jesus?",
+      "choices": [
+        { "body": "Atos dos Apóstolos", "is_correct": true },
+        { "body": "Romanos", "is_correct": false },
+        { "body": "Apocalipse", "is_correct": false },
+        { "body": "Hebreus", "is_correct": false }
+      ]
+    },
+    {
+      "type": "multiple_choice",
+      "body": "Qual é o último livro da Bíblia, escrito por João na ilha de Patmos?",
+      "pointsMultiplier": 2,
+      "choices": [
+        { "body": "Apocalipse", "is_correct": true },
+        { "body": "Judas", "is_correct": false },
+        { "body": "Malaquias", "is_correct": false },
+        { "body": "Hebreus", "is_correct": false }
+      ]
+    }
+  ]
+}

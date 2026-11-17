@@ -1,0 +1,65 @@
+{
+  "name": "Vida e Ensinos de Jesus",
+  "description": "Perguntas sobre os Evangelhos, milagres e parábolas de Jesus.",
+  "questions": [
+    {
+      "type": "multiple_choice",
+      "body": "Em qual cidade Jesus nasceu, segundo os Evangelhos de Mateus e Lucas?",
+      "choices": [
+        { "body": "Belém", "is_correct": true },
+        { "body": "Nazaré", "is_correct": false },
+        { "body": "Jerusalém", "is_correct": false },
+        { "body": "Cafarnaum", "is_correct": false }
+      ]
+    },
+    {
+      "type": "multiple_choice",
+      "body": "Qual foi o primeiro milagre registrado de Jesus no Evangelho de João?",
+      "choices": [
+        { "body": "Transformar água em vinho em Caná", "is_correct": true },
+        { "body": "Acalmar a tempestade no mar", "is_correct": false },
+        { "body": "Multiplicar pães e peixes", "is_correct": false },
+        { "body": "Curar o cego Bartimeu", "is_correct": false }
+      ]
+    },
+    {
+      "type": "true_false",
+      "body": "Verdadeiro ou Falso: Na parábola do Bom Samaritano, foi um samaritano quem socorreu o homem ferido à beira do caminho.",
+      "choices": [
+        { "body": "Verdadeiro", "is_correct": true },
+        { "body": "Falso", "is_correct": false }
+      ]
+    },
+    {
+      "type": "multiple_choice",
+      "body": "Quantos pães e quantos peixes Jesus usou na primeira multiplicação para alimentar uma grande multidão?",
+      "choices": [
+        { "body": "5 pães e 2 peixes", "is_correct": true },
+        { "body": "7 pães e 3 peixes", "is_correct": false },
+        { "body": "3 pães e 5 peixes", "is_correct": false },
+        { "body": "12 pães e 1 peixe", "is_correct": false }
+      ]
+    },
+    {
+      "type": "multiple_choice",
+      "body": "Qual discípulo caminhou sobre as águas em direção a Jesus antes de começar a afundar por duvidar?",
+      "choices": [
+        { "body": "Pedro", "is_correct": true },
+        { "body": "João", "is_correct": false },
+        { "body": "André", "is_correct": false },
+        { "body": "Tiago", "is_correct": false }
+      ]
+    },
+    {
+      "type": "multiple_choice",
+      "body": "O que representa construir a casa sobre a rocha na parábola ensinada por Jesus no Sermão do Monte?",
+      "pointsMultiplier": 2,
+      "choices": [
+        { "body": "Ouvir e praticar as palavras de Jesus", "is_correct": true },
+        { "body": "Construir torres altas em Jerusalém", "is_correct": false },
+        { "body": "Acumular riquezas para tempos difíceis", "is_correct": false },
+        { "body": "Viajar por todo o mar da Galileia", "is_correct": false }
+      ]
+    }
+  ]
+}

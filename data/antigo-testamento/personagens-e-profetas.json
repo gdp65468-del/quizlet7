@@ -1,0 +1,65 @@
+{
+  "name": "Personagens e Profetas",
+  "description": "Desafios sobre grandes histórias e personagens do Antigo Testamento.",
+  "questions": [
+    {
+      "type": "multiple_choice",
+      "body": "Qual profeta foi preservado na cova dos leões por sua fidelidade a Deus?",
+      "choices": [
+        { "body": "Daniel", "is_correct": true },
+        { "body": "Elias", "is_correct": false },
+        { "body": "Jonas", "is_correct": false },
+        { "body": "Isaías", "is_correct": false }
+      ]
+    },
+    {
+      "type": "multiple_choice",
+      "body": "Quem construiu a arca seguindo as instruções de Deus antes do dilúvio?",
+      "choices": [
+        { "body": "Noé", "is_correct": true },
+        { "body": "Abraão", "is_correct": false },
+        { "body": "Moisés", "is_correct": false },
+        { "body": "Jacó", "is_correct": false }
+      ]
+    },
+    {
+      "type": "true_false",
+      "body": "Verdadeiro ou Falso: Moisés recebeu as tábuas dos Dez Mandamentos no Monte Sinai.",
+      "choices": [
+        { "body": "Verdadeiro", "is_correct": true },
+        { "body": "Falso", "is_correct": false }
+      ]
+    },
+    {
+      "type": "multiple_choice",
+      "body": "Qual jovem pastor enfrentou e venceu o gigante Golias com uma funda e uma pedra?",
+      "choices": [
+        { "body": "Davi", "is_correct": true },
+        { "body": "Salomão", "is_correct": false },
+        { "body": "Saul", "is_correct": false },
+        { "body": "Jônatas", "is_correct": false }
+      ]
+    },
+    {
+      "type": "multiple_choice",
+      "body": "Qual profeta tentou fugir de Nínive de navio e passou três dias no ventre de um grande peixe?",
+      "choices": [
+        { "body": "Jonas", "is_correct": true },
+        { "body": "Jeremias", "is_correct": false },
+        { "body": "Ezequiel", "is_correct": false },
+        { "body": "Amós", "is_correct": false }
+      ]
+    },
+    {
+      "type": "multiple_choice",
+      "body": "Quem foi vendido por seus irmãos ao Egito, mas tornou-se governador e salvou sua família da fome?",
+      "pointsMultiplier": 2,
+      "choices": [
+        { "body": "José", "is_correct": true },
+        { "body": "Benjamim", "is_correct": false },
+        { "body": "Isaque", "is_correct": false },
+        { "body": "Calebe", "is_correct": false }
+      ]
+    }
+  ]
+}

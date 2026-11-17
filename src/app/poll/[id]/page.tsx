@@ -4,6 +4,7 @@ import { use, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { Brand, StatPill } from '@/components/ui'
 import CloseParticipantWindow from '@/components/close-participant-window'
+import SiteFooter from '@/components/site-footer'
 import { LanguageToggle, useI18n } from '@/lib/i18n'
 import { pollColors } from '@/lib/poll-colors'
 import { usePollView } from '@/lib/use-poll-view'
@@ -45,7 +46,7 @@ export default function PlayerPoll({ params }: { params: Promise<{ id: string }>
     } finally { setSubmitting(false) }
   }
 
-  return <main className="app-shell"><div className="surface">
+  return <main className="app-shell"><div className="surface flex min-h-screen flex-col">
     <header className="container-game flex flex-wrap items-center justify-between gap-4 py-5 sm:py-7">
       <Brand />
       <div className="flex flex-wrap items-center gap-2.5">
@@ -99,5 +100,6 @@ export default function PlayerPoll({ params }: { params: Promise<{ id: string }>
       <p className="text-muted mt-8 text-sm">{isPt ? 'Obrigado por participar.' : 'Thanks for taking part.'}</p>
       <CloseParticipantWindow />
     </section></div>}
+    <SiteFooter />
   </div></main>
 }

@@ -510,7 +510,7 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
           }}
         >
           <section
-            className="glass w-full max-w-lg border border-white/25 bg-[#2d1c45] p-6 sm:p-7 animate-in max-h-[90vh] overflow-y-auto"
+            className="glass w-full max-w-lg border border-white/25 bg-[#10203a] p-6 sm:p-7 animate-in max-h-[90vh] overflow-y-auto"
             role="dialog"
             aria-modal="true"
             aria-labelledby="appwrite-modal-title"
@@ -555,7 +555,7 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
             </div>
 
             {!isAppwriteConfigured ? (
-              <div className="mt-5 space-y-4 text-sm leading-relaxed text-[#d8cfe6]">
+              <div className="mt-5 space-y-4 text-sm leading-relaxed text-[#c7d5e8]">
                 <p>
                   {locale === 'pt'
                     ? 'Para usar o plano gratuito do Appwrite Cloud para salvar seus quizzes e histórico de partidas:'
@@ -665,7 +665,7 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
                       setAuthError('')
                     }}
                     className={`rounded-lg py-2 text-xs font-bold transition ${
-                      authMode === 'login' ? 'bg-[#a58bff] text-[#170f2e]' : 'text-[#cbd3eb] hover:text-white'
+                      authMode === 'login' ? 'bg-[#f5cf70] text-[#0b1526]' : 'text-[#cbd5e1] hover:text-white'
                     }`}
                   >
                     {locale === 'pt' ? 'Já tenho conta' : 'Sign in'}
@@ -677,7 +677,7 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
                       setAuthError('')
                     }}
                     className={`rounded-lg py-2 text-xs font-bold transition ${
-                      authMode === 'register' ? 'bg-[#a58bff] text-[#170f2e]' : 'text-[#cbd3eb] hover:text-white'
+                      authMode === 'register' ? 'bg-[#f5cf70] text-[#0b1526]' : 'text-[#cbd5e1] hover:text-white'
                     }`}
                   >
                     {locale === 'pt' ? 'Criar conta grátis' : 'Create free account'}

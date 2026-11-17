@@ -101,6 +101,7 @@ export async function appwriteRequest<T>(
 const globalSchema = globalThis as typeof globalThis & {
   __appwriteSchemaPromise?: Promise<void>
   __appwriteSchemaReady?: boolean
+  __appwriteSchemaSkipUntil?: number
 }
 
 async function ensureCollection(
@@ -221,6 +222,9 @@ async function ensureCollection(
 
 export async function ensureAppwriteSchema(): Promise<void> {
   if (!isAppwriteServerEnabled() || globalSchema.__appwriteSchemaReady) return
+  if (globalSchema.__appwriteSchemaSkipUntil && Date.now() < globalSchema.__appwriteSchemaSkipUntil) {
+    return
+  }
   if (globalSchema.__appwriteSchemaPromise) {
     return globalSchema.__appwriteSchemaPromise
   }
@@ -304,9 +308,10 @@ export async function ensureAppwriteSchema(): Promise<void> {
 
       globalSchema.__appwriteSchemaReady = true
     } catch (err) {
-      // If API key only has document scopes (401/403 on schema endpoints), allow document calls to proceed
+      // If API key lacks schema scopes (401/403), briefly defer retries so document-only keys proceed and updated keys self-heal
       if (err instanceof AppwriteRestError && (err.status === 401 || err.status === 403)) {
-        globalSchema.__appwriteSchemaReady = true
+        globalSchema.__appwriteSchemaSkipUntil = Date.now() + 10_000
+        globalSchema.__appwriteSchemaPromise = undefined
         return
       }
       globalSchema.__appwriteSchemaPromise = undefined

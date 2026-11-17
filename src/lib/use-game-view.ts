@@ -203,7 +203,7 @@ export function useGameView<T extends LiveView>(
     const tick = () => setNow(view.serverNow + Date.now() - receivedAt.current)
     const onVisibilityChange = () => {
       clearInterval(timer)
-      if (!document.hidden) { tick(); timer = setInterval(tick, 1000) }
+      if (!document.hidden) { tick(); timer = setInterval(tick, 250) }
     }
     document.addEventListener('visibilitychange', onVisibilityChange)
     onVisibilityChange()

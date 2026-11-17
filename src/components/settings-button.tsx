@@ -53,9 +53,9 @@ export default function SettingsButton() {
 
   const highlightDialog = () => {
     dialog.current?.animate([
-      { borderColor: 'rgba(237,222,255,.37)', boxShadow: '0 30px 85px rgba(8,3,26,.55)' },
-      { borderColor: 'rgba(198,167,255,.9)', boxShadow: '0 0 0 5px rgba(198,167,255,.22), 0 30px 85px rgba(8,3,26,.55)' },
-      { borderColor: 'rgba(237,222,255,.37)', boxShadow: '0 30px 85px rgba(8,3,26,.55)' },
+      { borderColor: 'rgba(196,219,255,.3)', boxShadow: '0 30px 85px rgba(3,8,20,.65)' },
+      { borderColor: 'rgba(245,207,112,.9)', boxShadow: '0 0 0 5px rgba(245,207,112,.22), 0 30px 85px rgba(3,8,20,.65)' },
+      { borderColor: 'rgba(196,219,255,.3)', boxShadow: '0 30px 85px rgba(3,8,20,.65)' },
     ], { duration: 420, easing: 'ease-out' })
   }
 

@@ -6,7 +6,7 @@ export type Locale = 'pt' | 'en'
 
 const dictionary = {
   pt: {
-    brandTag: 'Quizlet ao vivo',
+    brandTag: 'Arena Bíblica ao vivo',
     navHome: 'Início',
     navEditor: 'Editor & IA',
     navHistory: 'Histórico',
@@ -129,7 +129,7 @@ const dictionary = {
     historySubtitle: 'Compare desempenho entre turmas, identifique questões difíceis e exporte relatórios.',
   },
   en: {
-    brandTag: 'Live Quizlet',
+    brandTag: 'Arena Bíblica Live',
     navHome: 'Home',
     navEditor: 'Editor & AI',
     navHistory: 'History',
@@ -310,7 +310,7 @@ export function LanguageToggle({ className = '' }: { className?: string }) {
         type="button"
         onClick={() => setLocale('pt')}
         className={`whitespace-nowrap rounded-md px-2.5 py-1.5 transition-colors ${
-          locale === 'pt' ? 'bg-[#a58bff] text-[#170f2e]' : 'text-[#b7c2e2] hover:text-white'
+          locale === 'pt' ? 'bg-[#f5cf70] text-[#0b1526]' : 'text-[#c7d5e8] hover:text-white'
         }`}
       >
         PT-BR
@@ -319,7 +319,7 @@ export function LanguageToggle({ className = '' }: { className?: string }) {
         type="button"
         onClick={() => setLocale('en')}
         className={`whitespace-nowrap rounded-md px-2.5 py-1.5 transition-colors ${
-          locale === 'en' ? 'bg-[#a58bff] text-[#170f2e]' : 'text-[#b7c2e2] hover:text-white'
+          locale === 'en' ? 'bg-[#f5cf70] text-[#0b1526]' : 'text-[#c7d5e8] hover:text-white'
         }`}
       >
         EN

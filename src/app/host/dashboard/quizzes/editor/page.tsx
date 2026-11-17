@@ -639,47 +639,47 @@ function QuizEditorInner() {
     const rows = [
       ['pergunta', 'tipo', 'op1', 'op2', 'op3', 'op4', 'corretas', 'bonus2x', 'imagem', 'codigo'].join(','),
       [
-        '"Qual estrutura garante FIFO (First-In, First-Out)?"',
+        '"Qual profeta foi preservado na cova dos leões por sua fidelidade a Deus?"',
         'multiple_choice',
-        'Pilha (Stack)',
-        'Fila (Queue)',
-        'Árvore AVL',
-        'Tabela Hash',
+        'Elias',
+        'Daniel',
+        'Jonas',
+        'Isaías',
         '2',
         '1',
         '',
         '',
       ].join(','),
       [
-        '"Em JavaScript, const impede mutação de propriedades de um objeto?"',
+        '"Verdadeiro ou Falso: Moisés recebeu os Dez Mandamentos no Monte Sinai."',
         'true_false',
         'Verdadeiro',
         'Falso',
         '',
         '',
-        '2',
+        '1',
         '1',
         '',
         '',
       ].join(','),
       [
-        '"Quais destes são hooks nativos do React?"',
+        '"Quais destes livros pertencem aos quatro Evangelhos do Novo Testamento?"',
         'multi_select',
-        'useState',
-        'useEffect',
-        'useFetchData',
-        'useMemo',
+        'Mateus',
+        'Marcos',
+        'Romanos',
+        'João',
         '1|2|4',
         '2',
         '',
-        '"const [count, setCount] = useState(0);"',
+        '',
       ].join(','),
     ]
     const blob = new Blob(['\uFEFF' + rows.join('\r\n')], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = 'modelo-quizlet.csv'
+    a.download = 'modelo-arena-biblica.csv'
     document.body.appendChild(a)
     a.click()
     a.remove()
@@ -726,7 +726,7 @@ function QuizEditorInner() {
     const topicText = aiTopic.trim() || (aiLang === 'pt' ? '[COLE AQUI SEU TEMA, TEXTO OU CONTEÚDO DA AULA]' : '[PASTE YOUR TOPIC, SYLLABUS OR LESSON NOTES HERE]')
 
     if (aiLang === 'pt') {
-      return `Você é um especialista em avaliação educacional e gamificação. Crie um quiz interativo compatível com o formato JSON do Quizlet.
+      return `Você é um especialista em educação bíblica e gamificação. Crie um quiz interativo compatível com o formato JSON do Arena Bíblica.
 
 TEMA / CONTEÚDO BASE:
 ${topicText}
@@ -760,7 +760,7 @@ SCHEMA JSON OBRIGATÓRIO:
 }`
     }
 
-    return `You are an expert instructional designer. Generate an interactive quiz compatible with the Quizlet JSON schema.
+    return `You are an expert instructional designer. Generate an interactive quiz compatible with the Arena Bíblica JSON schema.
 
 TOPIC / SOURCE MATERIAL:
 ${topicText}

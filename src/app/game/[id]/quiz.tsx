@@ -27,7 +27,8 @@ export default function Quiz({
 
   const elapsed = view.serverNow - (view.questionStartedAt ?? view.serverNow)
   const choicesVisible = elapsed >= view.choiceRevealMs || view.isAnswerRevealed
-  const secondsLeft = Math.max(0, Math.ceil((view.choiceRevealMs + view.answerTimeMs - elapsed) / 1000))
+  const answerElapsedMs = Math.max(0, elapsed - view.choiceRevealMs)
+  const secondsLeft = Math.max(0, Math.ceil((view.answerTimeMs - answerElapsedMs) / 1000))
   const questionPercent = ((view.questionIndex + 1) / view.questionCount) * 100
 
   const hasSubmitted = selectedChoiceIds.length > 0
@@ -100,8 +101,14 @@ export default function Quiz({
                 <Flame className="h-3.5 w-3.5" /> {t.streakLabel(view.streak)}
               </StatPill>
             )}
-            <StatPill accent={view.isAnswerRevealed ? 'mint' : secondsLeft <= 5 ? 'amber' : 'cyan'}>
-              {view.isAnswerRevealed ? t.answerRevealed : t.secondsLeft(secondsLeft)}
+            <StatPill accent={view.isAnswerRevealed ? 'mint' : !choicesVisible ? 'violet' : secondsLeft <= 5 ? 'amber' : 'cyan'}>
+              {view.isAnswerRevealed
+                ? t.answerRevealed
+                : !choicesVisible
+                  ? locale === 'pt'
+                    ? `Aguarde (${secondsLeft}s)`
+                    : `Wait (${secondsLeft}s)`
+                  : t.secondsLeft(secondsLeft)}
             </StatPill>
           </div>
         </div>
@@ -132,13 +139,21 @@ export default function Quiz({
         />
         <div className="flex items-center gap-3 pt-2">
           <span className="text-muted whitespace-nowrap text-xs font-semibold">
-            {view.isAnswerRevealed ? t.answerRevealed : locale === 'pt' ? 'Tempo' : 'Time left'}
+            {view.isAnswerRevealed
+              ? t.answerRevealed
+              : !choicesVisible
+                ? locale === 'pt'
+                  ? 'Leia a pergunta'
+                  : 'Read first'
+                : locale === 'pt'
+                  ? 'Tempo'
+                  : 'Time left'}
           </span>
           <CountdownBar
-            key={question.id}
-            elapsedMs={elapsed}
-            durationMs={view.choiceRevealMs + view.answerTimeMs}
-            paused={view.isAnswerRevealed}
+            key={`${question.id}-${choicesVisible ? 'open' : 'wait'}`}
+            elapsedMs={answerElapsedMs}
+            durationMs={view.answerTimeMs}
+            paused={!choicesVisible || view.isAnswerRevealed}
           />
         </div>
       </section>

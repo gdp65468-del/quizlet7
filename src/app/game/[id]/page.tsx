@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { use, useEffect, useState } from 'react'
 import { Flame, Trophy, Volume2, VolumeX } from 'lucide-react'
 import CloseParticipantWindow from '@/components/close-participant-window'
+import SiteFooter from '@/components/site-footer'
 import { Brand, StatPill } from '@/components/ui'
 import { LanguageToggle, useI18n } from '@/lib/i18n'
 import { soundEngine } from '@/lib/sound-engine'
@@ -81,7 +82,7 @@ export default function PlayerGame({ params }: { params: Promise<{ id: string }>
 
   return (
     <main className="app-shell">
-      <div className="surface">
+      <div className="surface flex min-h-screen flex-col">
         <header className="container-game flex flex-wrap items-center justify-between gap-3 py-5 sm:py-7">
           <Brand />
           <div className="flex flex-wrap items-center gap-2.5">
@@ -308,6 +309,7 @@ export default function PlayerGame({ params }: { params: Promise<{ id: string }>
             </section>
           </div>
         )}
+        <SiteFooter />
       </div>
     </main>
   )

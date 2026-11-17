@@ -1,6 +1,6 @@
 {
-  "name": "Quizlet",
-  "description": "Host multiplayer quizzes from JSON files and create quick live polls for participants.",
+  "name": "Arena Bíblica",
+  "description": "Quizzes interativos ao vivo e enquetes em tempo real",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

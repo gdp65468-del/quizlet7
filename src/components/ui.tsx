@@ -1,15 +1,13 @@
+import { BookOpen } from 'lucide-react'
 import type { CSSProperties, ReactNode } from 'react'
 
 export function Brand({ compact = false }: { compact?: boolean }) {
   return (
     <span className="brand-lockup">
       <span className="brand-mark" aria-hidden="true">
-        <svg viewBox="0 0 32 32" fill="none" role="presentation">
-          <path d="M16 3.5 28.5 16 16 28.5 3.5 16 16 3.5Z" stroke="currentColor" strokeWidth="1.5" />
-          <path d="m11 16 3.4 3.4L21 12.8" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+        <BookOpen strokeWidth={2.25} />
       </span>
-      {!compact && <span className="brand-name">Quiz<span>let</span></span>}
+      {!compact && <span className="brand-name">Arena <span>Bíblica</span></span>}
     </span>
   )
 }

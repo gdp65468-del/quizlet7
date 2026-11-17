@@ -24,7 +24,8 @@ export default function Quiz({
   const question = view.question!
   const elapsed = view.serverNow - (view.questionStartedAt ?? view.serverNow)
   const choicesVisible = elapsed >= view.choiceRevealMs || view.isAnswerRevealed
-  const secondsLeft = Math.max(0, Math.ceil((view.choiceRevealMs + view.answerTimeMs - elapsed) / 1000))
+  const answerElapsedMs = Math.max(0, elapsed - view.choiceRevealMs)
+  const secondsLeft = Math.max(0, Math.ceil((view.answerTimeMs - answerElapsedMs) / 1000))
   const answerPercent = view.participants.length ? (view.answers.length / view.participants.length) * 100 : 0
   const questionPercent = ((view.questionIndex + 1) / view.questionCount) * 100
 
@@ -213,15 +214,25 @@ export default function Quiz({
             <p className="eyebrow">{locale === 'pt' ? 'Pulso da rodada' : 'Round pulse'}</p>
             <div className="mt-7 flex justify-center">
               <CountdownRing
-                key={question.id}
-                elapsedMs={elapsed}
-                durationMs={view.choiceRevealMs + view.answerTimeMs}
-                paused={view.isAnswerRevealed}
+                key={`${question.id}-${choicesVisible ? 'open' : 'wait'}`}
+                elapsedMs={answerElapsedMs}
+                durationMs={view.answerTimeMs}
+                paused={!choicesVisible || view.isAnswerRevealed}
               >
                 <div className="text-center">
                   <div className="text-4xl font-extrabold tabular-nums">{view.isAnswerRevealed ? '✓' : secondsLeft}</div>
                   <div className="text-muted text-xs font-bold uppercase tracking-widest">
-                    {view.isAnswerRevealed ? (locale === 'pt' ? 'fim' : 'done') : locale === 'pt' ? 'seg' : 'seconds'}
+                    {view.isAnswerRevealed
+                      ? locale === 'pt'
+                        ? 'fim'
+                        : 'done'
+                      : !choicesVisible
+                        ? locale === 'pt'
+                          ? 'aguarde'
+                          : 'wait'
+                        : locale === 'pt'
+                          ? 'seg'
+                          : 'seconds'}
                   </div>
                 </div>
               </CountdownRing>

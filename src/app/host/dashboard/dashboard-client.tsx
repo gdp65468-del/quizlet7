@@ -28,7 +28,7 @@ const categoryIcons = [
 type CategoryAppearance = { accent: string; start: string; end: string; icon: number }
 
 // The first positions echo the original warm, coral, cyan, and violet palette.
-const baseHues = [39, 348, 190, 263, 148, 23, 313, 215, 88, 286, 7, 175]
+const baseHues = [42, 158, 204, 14, 176, 30, 224, 140, 345, 192, 48, 260]
 
 function seededUnit(position: number, salt: number) {
   let value = Math.imul(position + 1, 0x9e3779b1) ^ Math.imul(salt + 1, 0x85ebca6b)
@@ -75,10 +75,30 @@ function TopicArt({ appearance }: { appearance: CategoryAppearance }) {
   </span>
 }
 
+const CATEGORY_LABELS: Record<string, string> = {
+  'antigo-testamento': 'Antigo Testamento',
+  'novo-testamento': 'Novo Testamento',
+  'livros-da-biblia': 'Livros da Bíblia',
+  'evangelhos-e-atos': 'Evangelhos e Atos',
+  'parabolas-de-jesus': 'Parábolas de Jesus',
+}
+
+const LOWERCASE_CONNECTORS = new Set(['da', 'de', 'do', 'das', 'dos', 'e', 'em', 'na', 'no', 'para'])
+const UPPERCASE_ACRONYMS = new Set(['ia', 'ti', 'at', 'nt', 'pdf', 'csv', 'sql', 'api'])
+
 function categoryLabel(category: string) {
-  return category.split(/[-_]/).filter(Boolean).map((word) =>
-    word.length <= 4 ? word.toUpperCase() : word.charAt(0).toUpperCase() + word.slice(1),
-  ).join(' ')
+  const mapped = CATEGORY_LABELS[category.toLowerCase()]
+  if (mapped) return mapped
+  return category
+    .split(/[-_]/)
+    .filter(Boolean)
+    .map((word, idx) => {
+      const lower = word.toLowerCase()
+      if (UPPERCASE_ACRONYMS.has(lower)) return lower.toUpperCase()
+      if (idx > 0 && LOWERCASE_CONNECTORS.has(lower)) return lower
+      return lower.charAt(0).toUpperCase() + lower.slice(1)
+    })
+    .join(' ')
 }
 
 import { BarChart3, Edit3, PlusCircle, Sparkles } from 'lucide-react'

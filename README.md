@@ -1,6 +1,6 @@
-# Quizlet
+# Arena Bíblica
 
-Host multiplayer quizzes from JSON files in `data`, or create a quick live poll. Participants join by link or QR code and respond on their own devices.
+Quizzes interativos ao vivo e enquetes em tempo real. Os participantes entram por link ou QR Code e respondem em seus próprios dispositivos.
 
 Demo Preview: [https://my-kahoot-quiz-demo.onrender.com/login](https://my-kahoot-quiz-demo.onrender.com/login) \
 Password: admin \

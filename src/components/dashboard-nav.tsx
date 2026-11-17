@@ -14,7 +14,7 @@ export default function DashboardNav() {
 
   return (
     <header className="container-wide flex flex-wrap items-center justify-between gap-4 py-6 sm:py-8">
-      <Link href="/host/dashboard" aria-label="Quizlet dashboard" className="shrink-0">
+      <Link href="/host/dashboard" aria-label="Painel Arena Bíblica" className="shrink-0">
         <Brand />
       </Link>
       <nav className="glass-soft flex flex-wrap items-center gap-1 p-1.5" aria-label="Dashboard navigation">
